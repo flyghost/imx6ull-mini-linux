@@ -443,6 +443,13 @@ static inline int acpi_i2c_install_space_handler(struct i2c_adapter *adapter)
 
 /* ------------------------------------------------------------------------- */
 
+/**
+ * @brief	通过名字匹配i2c_client和i2c_device_id
+ * 
+ * @param id 		I2C设备ID
+ * @param client 	I2C客户端
+ * @return const struct i2c_device_id* 
+ */
 static const struct i2c_device_id *i2c_match_id(const struct i2c_device_id *id,
 						const struct i2c_client *client)
 {
@@ -454,8 +461,10 @@ static const struct i2c_device_id *i2c_match_id(const struct i2c_device_id *id,
 	return NULL;
 }
 
+// 设备和设备驱动匹配
 static int i2c_device_match(struct device *dev, struct device_driver *drv)
 {
+	// 根据父类device地址，获取子类i2c_client地址
 	struct i2c_client	*client = i2c_verify_client(dev);
 	struct i2c_driver	*driver;
 
@@ -463,15 +472,17 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 		return 0;
 
 	/* Attempt an OF style match */
-	if (of_driver_match_device(dev, drv))
+	if (of_driver_match_device(dev, drv))	// 根据设备树匹配
 		return 1;
 
 	/* Then ACPI style match */
-	if (acpi_driver_match_device(dev, drv))
+	if (acpi_driver_match_device(dev, drv))	// 根据ACPI类型匹配
 		return 1;
 
+	// 根据父类device_driver地址，获取子类i2c_driver地址
 	driver = to_i2c_driver(drv);
 	/* match on an id table if there is one */
+	// 如果i2c_driver存在id匹配表，则通过匹配表来匹配
 	if (driver->id_table)
 		return i2c_match_id(driver->id_table, client) != NULL;
 
@@ -632,8 +643,9 @@ static int i2c_device_probe(struct device *dev)
 	if (!client)
 		return 0;
 
+	// 不存在中断，但是存在设备树
 	if (!client->irq && dev->of_node) {
-		int irq = of_irq_get(dev->of_node, 0);
+		int irq = of_irq_get(dev->of_node, 0);	// 从设备树中获取中断
 
 		if (irq == -EPROBE_DEFER)
 			return irq;
@@ -643,8 +655,9 @@ static int i2c_device_probe(struct device *dev)
 		client->irq = irq;
 	}
 
+	// 根据父类获取子类i2c_driver地址
 	driver = to_i2c_driver(dev->driver);
-	if (!driver->probe || !driver->id_table)
+	if (!driver->probe || !driver->id_table)		// i2c_driver必须最起码存在probe接口或者id_table中的一个
 		return -ENODEV;
 
 	if (!device_can_wakeup(&client->dev))
@@ -758,6 +771,7 @@ static struct device_type i2c_client_type = {
  * about the nodes you find.  Use this function to avoid oopses caused
  * by wrongly treating some non-I2C device as an i2c_client.
  */
+ // 根据父类地址获取子类地址
 struct i2c_client *i2c_verify_client(struct device *dev)
 {
 	return (dev->type == &i2c_client_type)
