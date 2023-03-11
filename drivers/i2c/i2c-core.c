@@ -772,6 +772,7 @@ static struct device_type i2c_client_type = {
  * by wrongly treating some non-I2C device as an i2c_client.
  */
  // 根据父类地址获取子类地址
+ // 用于校验该device是否为i2c_client
 struct i2c_client *i2c_verify_client(struct device *dev)
 {
 	return (dev->type == &i2c_client_type)
