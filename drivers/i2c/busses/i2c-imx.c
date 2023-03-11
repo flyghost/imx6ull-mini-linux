@@ -212,10 +212,10 @@ struct imx_i2c_struct {
 };
 
 static const struct imx_i2c_hwdata imx1_i2c_hwdata  = {
-	.devtype		= IMX1_I2C,
-	.regshift		= IMX_I2C_REGSHIFT,
-	.clk_div		= imx_i2c_clk_div,
-	.ndivs			= ARRAY_SIZE(imx_i2c_clk_div),
+	.devtype		= IMX1_I2C,						// 控制器类型
+	.regshift		= IMX_I2C_REGSHIFT,				// 寄存器偏移
+	.clk_div		= imx_i2c_clk_div,				// 时钟分频表
+	.ndivs			= ARRAY_SIZE(imx_i2c_clk_div),	// 支持的分频系数个数
 	.i2sr_clr_opcode	= I2SR_CLR_OPCODE_W0C,
 	.i2cr_ien_opcode	= I2CR_IEN_OPCODE_1,
 

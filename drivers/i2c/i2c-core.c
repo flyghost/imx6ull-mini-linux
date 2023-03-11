@@ -482,7 +482,7 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 	// 根据父类device_driver地址，获取子类i2c_driver地址
 	driver = to_i2c_driver(drv);
 	/* match on an id table if there is one */
-	// 如果i2c_driver存在id匹配表，则通过匹配表来匹配
+	// 如果i2c_driver存在id_table匹配表，则通过匹配表来匹配
 	if (driver->id_table)
 		return i2c_match_id(driver->id_table, client) != NULL;
 
