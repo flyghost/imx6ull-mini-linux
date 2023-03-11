@@ -491,6 +491,13 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 
 
 /* uevent helps with hotplug: modprobe -q $(MODALIAS) */
+/**
+ * @brief 用于热插拔
+ * 
+ * @param dev 
+ * @param env 
+ * @return int 
+ */
 static int i2c_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct i2c_client	*client = to_i2c_client(dev);
