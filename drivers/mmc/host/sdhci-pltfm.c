@@ -116,6 +116,14 @@ void sdhci_get_of_property(struct platform_device *pdev) {}
 #endif /* CONFIG_OF */
 EXPORT_SYMBOL_GPL(sdhci_get_of_property);
 
+/**
+ * @brief 初始化 sdhci 平台
+ * 
+ * @param pdev sdhci 平台设备
+ * @param pdata sdhci 平台设备数据
+ * @param priv_size 是否包含私有数据，如果没有的话，则设置为0
+ * @return struct sdhci_host* 
+ */
 struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
 				    const struct sdhci_pltfm_data *pdata,
 				    size_t priv_size)
@@ -124,6 +132,7 @@ struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
 	struct resource *iomem;
 	int ret;
 
+	// 获取寄存器基地址
 	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!iomem) {
 		ret = -ENOMEM;
@@ -133,6 +142,7 @@ struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
 	if (resource_size(iomem) < 0x100)
 		dev_err(&pdev->dev, "Invalid iomem size!\n");
 
+	// 分配 sdhci host 内存空间，包含私有数据内存
 	host = sdhci_alloc_host(&pdev->dev,
 		sizeof(struct sdhci_pltfm_host) + priv_size);
 
@@ -141,6 +151,7 @@ struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
 		goto err;
 	}
 
+	// 初始化 host，包含 ops 、quirks、quirks2
 	host->hw_name = dev_name(&pdev->dev);
 	if (pdata && pdata->ops)
 		host->ops = pdata->ops;
@@ -174,6 +185,7 @@ struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
 	if (host->ops && host->ops->platform_init)
 		host->ops->platform_init(host);
 
+	// 将 host 保存到 device 中的 driver_data 中
 	platform_set_drvdata(pdev, host);
 
 	return host;

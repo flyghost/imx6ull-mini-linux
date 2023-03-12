@@ -149,8 +149,10 @@
  * uSDHC: Due to the I/O timing limit, for SDR mode, SD card clock can't
  * exceed 150MHz, for DDR mode, SD card clock can't exceed 45MHz.
  */
+// 由于I/O时序限制，对于SDR模式，SD卡时钟不能超过150MHz，对于DDR模式，SD卡时钟不能超过45MHz
 #define ESDHC_FLAG_ERR010450		BIT(11)
 /* need request bus freq during low power */
+// 在低功率时需要请求总线频率
 #define ESDHC_FLAG_BUSFREQ		BIT(12)
 
 /* A higher clock ferquency than this rate requires strobell dll control */
@@ -206,12 +208,15 @@ static struct esdhc_soc_data usdhc_imx6sx_data = {
 			| ESDHC_FLAG_BUSFREQ,
 };
 
+// 使用这个结构体
 static struct esdhc_soc_data usdhc_imx6ull_data = {
-	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING
-			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
-			| ESDHC_FLAG_STATE_LOST_IN_LPMODE
-			| ESDHC_FLAG_ERR010450
-			| ESDHC_FLAG_BUSFREQ,
+	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING	// 该标志表明ESDHC控制器是集成在i.MX6系列上的USDHC块。 
+														// IP支持标准调优过程
+			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200	// IP有SDHCI_CAPABILITIES_1寄存器
+														// 支持HS200模式
+			| ESDHC_FLAG_STATE_LOST_IN_LPMODE			// 在低功耗模式下IP状态会丢失
+			| ESDHC_FLAG_ERR010450						// 由于I/O时序限制，对于SDR模式，SD卡时钟不能超过150MHz，对于DDR模式，SD卡时钟不能超过45MHz
+			| ESDHC_FLAG_BUSFREQ,						// 在低功率时需要请求总线频率
 };
 
 static struct esdhc_soc_data usdhc_imx7d_data = {
@@ -222,11 +227,13 @@ static struct esdhc_soc_data usdhc_imx7d_data = {
 };
 
 struct pltfm_imx_data {
-	u32 scratchpad;
-	struct pinctrl *pinctrl;
+	u32 scratchpad;							// 保存临时的值，用来延迟写入：与下面的命令写入一起执行。
+
+	struct pinctrl *pinctrl;				// 用于保存pinctrl状态，如下三个
 	struct pinctrl_state *pins_default;
 	struct pinctrl_state *pins_100mhz;
 	struct pinctrl_state *pins_200mhz;
+
 	const struct esdhc_soc_data *socdata;
 	struct esdhc_platform_data boarddata;
 	struct clk *clk_ipg;
@@ -580,6 +587,7 @@ static void esdhc_writew_le(struct sdhci_host *host, u16 val, int reg)
 			 * Postpone this write, we must do it together with a
 			 * command write that is down below.
 			 */
+			// 延迟这个写入，我们必须与下面的命令写入一起执行。
 			imx_data->scratchpad = val;
 		}
 		return;
@@ -1210,10 +1218,12 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 	int err;
 	struct pltfm_imx_data *imx_data;
 
+	// sdhci 初始化，并返回 sdhci host
 	host = sdhci_pltfm_init(pdev, &sdhci_esdhc_imx_pdata, 0);
 	if (IS_ERR(host))
 		return PTR_ERR(host);
 
+	// 获取 sdhci host 保存的私有数据，也就是 sdhci platform host
 	pltfm_host = sdhci_priv(host);
 
 	imx_data = devm_kzalloc(&pdev->dev, sizeof(*imx_data), GFP_KERNEL);

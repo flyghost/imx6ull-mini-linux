@@ -2867,6 +2867,7 @@ EXPORT_SYMBOL_GPL(sdhci_runtime_resume_host);
  *                                                                           *
 \*****************************************************************************/
 
+// 分配 sdhci host 内存空间，包含私有数据内存
 struct sdhci_host *sdhci_alloc_host(struct device *dev,
 	size_t priv_size)
 {
@@ -2875,10 +2876,12 @@ struct sdhci_host *sdhci_alloc_host(struct device *dev,
 
 	WARN_ON(dev == NULL);
 
+	// 分配一个 mmc host
 	mmc = mmc_alloc_host(sizeof(struct sdhci_host) + priv_size, dev);
 	if (!mmc)
 		return ERR_PTR(-ENOMEM);
 
+	// 获取 mmc 的 私有数地址，作为 sdhci host 地址
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
 
