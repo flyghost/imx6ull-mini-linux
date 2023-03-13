@@ -95,15 +95,16 @@
 #define I2SR_SRW	0x04
 #define I2SR_IAL	0x10
 #define I2SR_IBB	0x20
-#define I2SR_IAAS	0x40
-#define I2SR_ICF	0x80
+#define I2SR_IAAS	0x40	// 
+#define I2SR_ICF	0x80	// 1:传输接收  0：正在传输
+
 #define I2CR_DMAEN	0x02
-#define I2CR_RSTA	0x04
-#define I2CR_TXAK	0x08
-#define I2CR_MTX	0x10
-#define I2CR_MSTA	0x20
-#define I2CR_IIEN	0x40
-#define I2CR_IEN	0x80
+#define I2CR_RSTA	0x04	// 启动repeat
+#define I2CR_TXAK	0x08	// 是否发送ACK，0 不发送  1 发送
+#define I2CR_MTX	0x10	// 发送模式和接收模式，0：recv   1：send
+#define I2CR_MSTA	0x20	// MASTER/SLAVE模式选择，0：slave  1：master
+#define I2CR_IIEN	0x40	// I2C中断使能
+#define I2CR_IEN	0x80	// I2C使能位
 
 /* register bits different operating codes definition:
  * 1) I2SR: Interrupt flags clear operation differ between SoCs:
@@ -203,7 +204,7 @@ struct imx_i2c_struct {
 	unsigned long		i2csr;
 	unsigned int		disable_delay;
 	int			stopped;
-	unsigned int		ifdr; /* IMX_I2C_IFDR */
+	unsigned int		ifdr; /* IMX_I2C_IFDR */		// I2C IFDR 寄存器，用于设置I2C时钟分频
 	unsigned int		cur_clk;
 	unsigned int		bitrate;
 	const struct imx_i2c_hwdata	*hwdata;
@@ -413,6 +414,13 @@ static void i2c_imx_dma_free(struct imx_i2c_struct *i2c_imx)
 /** Functions for IMX I2C adapter driver ***************************************
 *******************************************************************************/
 
+/**
+ * @brief 判断是否在指定的状态
+ * 
+ * @param i2c_imx 
+ * @param for_busy 1：判断是否在busy   0：判断是否在idle
+ * @return int 
+ */
 static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy)
 {
 	unsigned long orig_jiffies = jiffies;
