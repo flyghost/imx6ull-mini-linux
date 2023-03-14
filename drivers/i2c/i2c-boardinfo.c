@@ -30,6 +30,11 @@ EXPORT_SYMBOL_GPL(__i2c_board_lock);
 LIST_HEAD(__i2c_board_list);
 EXPORT_SYMBOL_GPL(__i2c_board_list);
 
+// __i2c_first_dynamic_bus_num是一个全局变量，用来表示第一个动态分配的I2C总线编号。它的初始值是0，
+// 但是如果在machine_init()函数中调用了i2c_register_board_info()函数，它会被更新为busnum + 1
+// 其中busnum是传递给i2c_register_board_info()函数的参数。这样可以避免和静态分配的I2C总线编号冲突。
+// 例如：已经初始化了一个i2c0，下一个调用分配的最大总线标号就是1
+// 动态创建的I2C总线通常是由某些设备驱动程序或用户空间程序创建的，而静态创建的I2C总线通常是由平台代码或设备树定义的。
 int __i2c_first_dynamic_bus_num;
 EXPORT_SYMBOL_GPL(__i2c_first_dynamic_bus_num);
 

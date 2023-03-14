@@ -493,6 +493,9 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 /* uevent helps with hotplug: modprobe -q $(MODALIAS) */
 /**
  * @brief 用于热插拔
+ * i2c_device_uevent是一个内核事件，用于通知用户空间有新的I2C设备被注册或注销。
+ * I2C设备的驱动程序可以通过调用device_add或device_del函数来触发这个事件。
+ * 用户空间可以通过监听/sys/bus/i2c/devices目录下的设备节点来接收这个事件
  * 
  * @param dev 
  * @param env 
@@ -515,21 +518,60 @@ static int i2c_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 }
 
 /* i2c bus recovery routines */
+
+/**
+ * @brief 用于获取当前的SCL线的值。
+ * 
+ * SCL线是I2C总线上的时钟线，用于同步数据传输。
+ * 是通用的SCL恢复机制的一部分，用于在I2C总线出现错误时恢复正常状态。
+ * get_scl_gpio_value函数需要一个参数，就是SCL线对应的GPIO号。GPIO号是Linux内核用来标识GPIO引脚的数字。
+ * 
+ * @param adap 
+ * @return int 返回一个整数值，表示SCL线的电平状态，0表示低电平，1表示高电平1。
+ * 可以根据这个值来判断I2C总线是否正常工作，或者进行一些错误恢复的操作。
+ */
 static int get_scl_gpio_value(struct i2c_adapter *adap)
 {
 	return gpio_get_value(adap->bus_recovery_info->scl_gpio);
 }
 
+/**
+ * @brief 用于设置当前的SCL线的值。
+ * 
+ * 是通用的SCL恢复机制的一部分，用于在I2C总线出现错误时恢复正常状态。
+ * 这个函数会改变SCL线的输出模式和电压值，从而影响I2C总线的工作。
+ * 
+ * @param adap 
+ * @param val 要设置的电平状态，0表示低电平，1表示高电平1
+ */
 static void set_scl_gpio_value(struct i2c_adapter *adap, int val)
 {
 	gpio_set_value(adap->bus_recovery_info->scl_gpio, val);
 }
 
+/**
+ * @brief 用于获取当前的SDA线的值
+ * 
+ * 是通用的SDA恢复机制的一部分，用于在I2C总线出现错误时恢复正常状态。
+ * 
+ * @param adap 
+ * @return int 返回一个整数值，表示SDA线的电平状态，0表示低电平，1表示高电平1
+ * 可以根据这个值来判断I2C总线是否正常工作，或者进行一些错误恢复的操作
+ */
 static int get_sda_gpio_value(struct i2c_adapter *adap)
 {
 	return gpio_get_value(adap->bus_recovery_info->sda_gpio);
 }
 
+/**
+ * @brief 用来获取SCL和SDA线对应的GPIO引脚的编号，以便后续使用set_scl_gpio_value和get_sda_gpio_value等函数来进行恢复操作
+ * 
+ * 有时候，由于硬件噪声或其他原因，I2C总线上的某个设备可能会锁定总线，导致其他设备无法正常通信3。
+ * 这时候，就需要使用一些恢复机制，通过操作SCL和SDA线的GPIO引脚来强制释放总线。
+ * 
+ * @param adap 
+ * @return int 
+ */
 static int i2c_get_gpios_for_recovery(struct i2c_adapter *adap)
 {
 	struct i2c_bus_recovery_info *bri = adap->bus_recovery_info;
@@ -555,6 +597,11 @@ static int i2c_get_gpios_for_recovery(struct i2c_adapter *adap)
 	return ret;
 }
 
+/**
+ * @brief 用来释放SCL和SDA对应的引脚，以便恢复GPIO的原始状态
+ * 
+ * @param adap 
+ */
 static void i2c_put_gpios_for_recovery(struct i2c_adapter *adap)
 {
 	struct i2c_bus_recovery_info *bri = adap->bus_recovery_info;
@@ -573,6 +620,18 @@ static void i2c_put_gpios_for_recovery(struct i2c_adapter *adap)
 #define RECOVERY_NDELAY		5000
 #define RECOVERY_CLK_CNT	9
 
+/**
+ * @brief 执行恢复操作
+ * 
+ * 这个函数会先调用i2c_get_gpios_for_recovery函数来获取SCL和SDA线对应的GPIO引脚的编号，
+ * 然后调用i2c_init_recovery_info函数来初始化一个i2c_recovery_info结构体，
+ * 并将其赋值给i2c_adapter结构体的bus_recovery_info成员变量。
+ * 接着，这个函数会调用i2c_recover_bus函数来执行具体的恢复操作，包括将SCL和SDA线设置为输出模式，并按照一定的顺序切换它们的电平状态。
+ * 最后，这个函数会调用i2c_put_gpios_for_recovery函数来释放SCL和SDA线对应的GPIO引脚，并将它们设置为输入模式。
+ * 
+ * @param adap 
+ * @return int 
+ */
 static int i2c_generic_recovery(struct i2c_adapter *adap)
 {
 	struct i2c_bus_recovery_info *bri = adap->bus_recovery_info;
@@ -609,6 +668,12 @@ static int i2c_generic_recovery(struct i2c_adapter *adap)
 	return ret;
 }
 
+/**
+ * @brief 用于执行I2C总线的通用SCL恢复操作
+ * 
+ * @param adap 
+ * @return int 
+ */
 int i2c_generic_scl_recovery(struct i2c_adapter *adap)
 {
 	adap->bus_recovery_info->set_scl(adap, 1);
@@ -616,6 +681,12 @@ int i2c_generic_scl_recovery(struct i2c_adapter *adap)
 }
 EXPORT_SYMBOL_GPL(i2c_generic_scl_recovery);
 
+/**
+ * @brief 用于执行I2C总线的通用GPIO恢复操作
+ * 
+ * @param adap 
+ * @return int 
+ */
 int i2c_generic_gpio_recovery(struct i2c_adapter *adap)
 {
 	int ret;
@@ -631,6 +702,12 @@ int i2c_generic_gpio_recovery(struct i2c_adapter *adap)
 }
 EXPORT_SYMBOL_GPL(i2c_generic_gpio_recovery);
 
+/**
+ * @brief 用于执行I2C总线的恢复操作
+ * 
+ * @param adap 
+ * @return int 
+ */
 int i2c_recover_bus(struct i2c_adapter *adap)
 {
 	if (!adap->bus_recovery_info)
@@ -1046,6 +1123,9 @@ static int dummy_remove(struct i2c_client *client)
 	return 0;
 }
 
+// dummy_driver是一个示例的I2C驱动程序，它的作用是占用I2C总线上的一个从设备地址，并在探测到该地址时打印一些信息。
+// 它可以用来测试I2C总线的功能或者模拟一些不存在的设备。
+// 它也可以用来开发一些自定义的I2C驱动程序，比如连接一些机器人或其他硬件。
 static struct i2c_driver dummy_driver = {
 	.driver.name	= "dummy",
 	.probe		= dummy_probe,
@@ -1535,11 +1615,19 @@ static int __i2c_add_numbered_adapter(struct i2c_adapter *adap)
  * in adap->nr, and the specified adapter became available for clients.
  * Otherwise, a negative errno value is returned.
  */
+
+/**
+ * @brief 添加一个适配器
+ * 
+ * @param adapter 
+ * @return int 
+ */
 int i2c_add_adapter(struct i2c_adapter *adapter)
 {
 	struct device *dev = &adapter->dev;
 	int id;
 
+	// 如果存在设备树节点，则使用设备树节点id作为适配器number
 	if (dev->of_node) {
 		id = of_alias_get_id(dev->of_node, "i2c");
 		if (id >= 0) {
@@ -1902,6 +1990,7 @@ static int __init i2c_init(void)
 {
 	int retval;
 
+	// 在设备树中的aliases节点中找到所有i2c别名对应的最大编号
 	retval = of_alias_get_highest_id("i2c");
 
 	down_write(&__i2c_board_lock);
@@ -1909,6 +1998,7 @@ static int __init i2c_init(void)
 		__i2c_first_dynamic_bus_num = retval + 1;
 	up_write(&__i2c_board_lock);
 
+	// 注册 i2c 总线
 	retval = bus_register(&i2c_bus_type);
 	if (retval)
 		return retval;

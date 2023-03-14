@@ -2019,6 +2019,21 @@ EXPORT_SYMBOL_GPL(of_alias_get_id);
  * The function travels the lookup table to get the highest alias id for the
  * given alias stem.  It returns the alias id if found.
  */
+
+/**
+ * @brief 根据传入的设备节点，在设备树中的aliases节点中找到对应的唯一编号
+ * 
+ * 例如，of_alias_get_id(pdev->dev.of_node, “spi”)会返回设备节点pdev->dev.of_node对应的spi编号。
+ * of_alias_get_highest_id是一个类似的函数，它的作用是获取给定别名前缀的最高编号。
+ * 例如，of_alias_get_highest_id(“spi”)会返回设备树中所有spi别名中最大的编号。
+ * 
+ * 使用of_alias_get_highest_id函数的一个可能的原因是为了分配新的设备编号，避免与设备树中已有的编号冲突。
+ * 例如，如果设备树中已经定义了spi0、spi1、spi2等别名，那么使用of_alias_get_highest_id(“spi”)可以得到2，
+ * 然后可以分配新的别名spi3。这样可以方便地管理设备树中的设备。
+ * 
+ * @param stem 
+ * @return int 
+ */
 int of_alias_get_highest_id(const char *stem)
 {
 	struct alias_prop *app;
