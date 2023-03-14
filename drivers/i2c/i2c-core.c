@@ -753,6 +753,7 @@ static int i2c_device_probe(struct device *dev)
 	if (status < 0)
 		return status;
 
+	// 将i2c设备添加到电源管理域中
 	status = dev_pm_domain_attach(&client->dev, true);
 	if (status != -EPROBE_DEFER) {
 		status = driver->probe(client, i2c_match_id(driver->id_table,
@@ -822,6 +823,11 @@ show_modalias(struct device *dev, struct device_attribute *attr, char *buf)
 }
 static DEVICE_ATTR(modalias, S_IRUGO, show_modalias, NULL);
 
+/**
+ * @brief 表示一个 I2C 适配器。它与一个字符特殊文件相关联，可以被用户模式驱动程序访问。
+ * 这个结构体的作用是将 I2C 适配器与字符特殊文件关联起来，以便用户模式驱动程序能够访问 I2C 适配器 
+ * 
+ */
 static struct attribute *i2c_dev_attrs[] = {
 	&dev_attr_name.attr,
 	/* modalias helps coldplug:  modprobe $(cat .../modalias) */
