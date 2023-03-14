@@ -558,6 +558,16 @@ static void platform_drv_shutdown(struct device *_dev)
  * @drv: platform driver structure
  * @owner: owning module/driver
  */
+
+/**
+ * @brief 将平台驱动程序注册到内核的驱动模型中，使其能够与平台设备进行绑定和解绑。
+ * 
+ * 如果内核中存在与平台驱动程序匹配的平台设备，那么 __platform_driver_register 会调用 probe () 方法来初始化设备
+ * 
+ * @param drv 		待注册的平台驱动
+ * @param owner 
+ * @return int 
+ */
 int __platform_driver_register(struct platform_driver *drv,
 				struct module *owner)
 {
