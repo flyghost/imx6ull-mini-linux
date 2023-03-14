@@ -2145,6 +2145,17 @@ EXPORT_SYMBOL(i2c_transfer);
  *
  * Returns negative errno, or else the number of bytes written.
  */
+
+/**
+ * @brief master 发送
+ * 
+ * @param client   	client设备
+ * @param buf 		需要发送的数据（对于带寄存器的设备，buf[0]为寄存器地址）
+ * 								 （对于直接内存设备，buf[0]开始全是数据）
+ * @param count 	需要发送的数据大小
+ * @return int 		>0 ，发送的数据字节数
+ * 					否则，错误Number
+ */
 int i2c_master_send(const struct i2c_client *client, const char *buf, int count)
 {
 	int ret;
