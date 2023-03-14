@@ -1252,6 +1252,16 @@ void device_unregister(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(device_unregister);
 
+/**
+ * @brief 遍历设备链表，找到给定设备的下一个设备
+ * 
+ * 如果给定设备为NULL，则返回链表的第一个设备
+ * 如果没有下一个设备，则返回NULL
+ * 
+ * @param i 					一个设备指针
+ * @return struct device* 		下一个设备指针，如果存在
+ * 								NULL，如果没有下一个设备
+ */
 static struct device *next_device(struct klist_iter *i)
 {
 	struct klist_node *n = klist_next(i);
@@ -1322,6 +1332,23 @@ const char *device_get_devnode(struct device *dev,
  *
  * We check the return of @fn each time. If it returns anything
  * other than 0, we break out and return that value.
+ */
+
+/**
+ * @brief 用于遍历一个设备的所有子设备，并对每个子设备调用一个函数，传递给它一些数据。
+ * 
+ * 可以用于获取设备树中的节点信息，例如节点名称、属性值等
+ * 
+ * 遍历父设备的子设备链表，找到符合类型条件的子设备
+ * 调用fn函数，将子设备和数据作为参数传递
+ * 检查fn函数的返回值，如果非0，则停止遍历并返回该值
+ * 如果遍历完毕，则返回0
+ * 
+ * @param parent 	要遍历的父设备指针
+ * @param data 		要传递给子设备的数据指针
+ * @param fn 		对每个子设备执行的函数指针
+ * @return int 		0：如果成功遍历了所有子设备，或者没有子设备
+ * 					非0：如果fn函数返回了非0值，或者发生了错误
  */
 int device_for_each_child(struct device *parent, void *data,
 			  int (*fn)(struct device *dev, void *data))

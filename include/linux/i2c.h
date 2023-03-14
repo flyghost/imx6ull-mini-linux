@@ -530,6 +530,17 @@ static inline void i2c_set_adapdata(struct i2c_adapter *dev, void *data)
 	dev_set_drvdata(&dev->dev, data);
 }
 
+/**
+ * @brief 这个宏通常用于在内核驱动中判断一个I2C适配器是否是由另一个I2C适配器创建的
+ * 
+ * 例如一个多路复用器。
+ * 如果是的话，你可以通过这个宏获取父适配器的指针，然后进行一些操作，例如设置复用器的通道。
+ * 如果你想在用户空间中访问I2C适配器，你可以使用i2c-dev模块，它会为每个注册的I2C适配器创建一个/dev/i2c-*设备文件23。
+ * 你可以通过打开这个文件，然后使用ioctl或smbus函数来与I2C设备通信
+ * 
+ * @param adapter 
+ * @return struct i2c_adapter* 
+ */
 static inline struct i2c_adapter *
 i2c_parent_is_i2c_adapter(const struct i2c_adapter *adapter)
 {

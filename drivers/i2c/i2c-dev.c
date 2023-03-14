@@ -53,6 +53,12 @@ struct i2c_dev {
 static LIST_HEAD(i2c_dev_list);
 static DEFINE_SPINLOCK(i2c_dev_list_lock);
 
+/**
+ * @brief 用于从链表 i2c_dev_list 中获取与给定次设备号对应的 i2c_dev 对象
+ * 
+ * @param index 次设备号
+ * @return struct i2c_dev* 
+ */
 static struct i2c_dev *i2c_dev_get_by_minor(unsigned index)
 {
 	struct i2c_dev *i2c_dev;
@@ -68,6 +74,14 @@ found:
 	return i2c_dev;
 }
 
+/**
+ * @brief 用于分配并初始化一个 struct i2c_dev 结构体。
+ * 
+ * 这个结构体的 adap 成员指向操作的适配器。之后，这个 i2c_dev 会被链入链表 i2c_dev_list 中
+ * 
+ * @param adap 				指向的适配器
+ * @return struct i2c_dev* 	分配到的 i2c_dev 结构体
+ */
 static struct i2c_dev *get_free_i2c_dev(struct i2c_adapter *adap)
 {
 	struct i2c_dev *i2c_dev;
@@ -133,6 +147,18 @@ ATTRIBUTE_GROUPS(i2c);
  * needed by those system calls and by this SMBus interface.
  */
 
+/**
+ * @brief i2c-dev 提供了 read、write 和 ioctl 功能。
+ * 
+ * 但是，需要注意的是，read 和 write 方法不支持 RepStart 模式，也就是每次调用只能发送/接收一个字节的数据。
+ * 这对于操作稍微复杂点的 I2C 设备的局限性太大，一般不会使用这两个接口 
+ * 
+ * @param file 			文件指针
+ * @param buf 			保存读取数据
+ * @param count 		读取长度
+ * @param offset 		
+ * @return ssize_t 
+ */
 static ssize_t i2cdev_read(struct file *file, char __user *buf, size_t count,
 		loff_t *offset)
 {
@@ -191,11 +217,46 @@ static int i2cdev_check(struct device *dev, void *addrp)
 }
 
 /* walk up mux tree */
+/**
+ * 多路复用器是一种设备，它可以在一个上游的I2C总线和多个下游的I2C总线之间切换。
+ * 多路复用器可以让你在一个I2C总线上连接更多的设备，特别是那些有相同地址的设备。
+ * 多路复用器有一个控制寄存器，你可以通过写入不同的值来选择不同的下游通道。
+ * 多路复用器可以帮助你消除地址冲突，节省系统功耗
+ * 
+ * 编程控制多路复用器的方法取决于你使用的多路复用器型号和你的主控制器。一般来说，你需要做以下几个步骤：
+ * 1、连接多路复用器的SDA和SCL引脚到主控制器的I2C总线上
+ * 2、连接多路复用器的VCC和GND引脚到合适的电源上
+ * 3、连接多路复用器的A0，A1，A2引脚到合适的电平上，以设置多路复用器的I2C地址
+ * 4、连接多路复用器的RST引脚到主控制器的一个数字输出引脚上，以便在需要时重置多路复用器
+ * 5、连接多路复用器的各个通道（SC0/SD0到SC7/SD7）到不同的I2C设备上
+ * 6、在主控制器上初始化I2C总线，并指定多路复用器的地址
+ * 7、在主控制器上写入一个字节到多路复用器，以选择要激活的通道。每个通道对应一个位，置1表示激活，置0表示关闭。例如，如果要激活第0和第3个通道，就要写入00001001。
+ * 8、在主控制器上读写I2C设备，就像它们直接连接到I2C总线一样。注意，如果有多个设备使用相同的地址，你需要在每次切换通道之前重新初始化它们。
+*/
+
+
+/**
+ * @brief 检查给定的I2C适配器是否有多路复用器父节点，即是否是通过多路复用器创建的子适配器
+ * 
+ * 可以使用这个函数来判断一个I2C适配器是否可以被用户空间访问，因为如果它有未注册的多路复用器父节点，那么它可能还没有完全初始化
+ * 
+ * 如果有多路复用器父节点，遍历它们，检查它们是否都已经注册到I2C总线上
+ * 如果所有多路复用器父节点都已经注册，返回0
+ * 如果至少有一个多路复用器父节点还没有注册，返回-EPROBE_DEFER，表示需要延迟处理
+ * 
+ * @param adapter 
+ * @param addr 
+ * @return int 
+ * 0：如果适配器没有多路复用器父节点，或者所有多路复用器父节点都已经注册
+ * -EPROBE_DEFER：如果适配器有多路复用器父节点，但是至少有一个还没有注册
+ */
 static int i2cdev_check_mux_parents(struct i2c_adapter *adapter, int addr)
 {
+	// 判断该适配器是否由另一个适配器创建的
 	struct i2c_adapter *parent = i2c_parent_is_i2c_adapter(adapter);
 	int result;
 
+	// 遍历所有的子设备
 	result = device_for_each_child(&adapter->dev, &addr, i2cdev_check);
 	if (!result && parent)
 		result = i2cdev_check_mux_parents(parent, addr);
