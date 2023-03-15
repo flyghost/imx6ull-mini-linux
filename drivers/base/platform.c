@@ -225,6 +225,16 @@ static void platform_device_release(struct device *dev)
  * Create a platform device object which can have other objects attached
  * to it, and which will have attached objects freed when it is released.
  */
+
+/**
+ * @brief 为 platform_device 结构体分配内存并初始化其变量。
+ * 
+ * 这个函数与 platform_device_add() 函数一起使用，platform_device_add() 函数可以用来添加一个已经分配内存的 platform_device 结构体
+ * 
+ * @param name 
+ * @param id 
+ * @return struct platform_device* 
+ */
 struct platform_device *platform_device_alloc(const char *name, int id)
 {
 	struct platform_object *pa;
@@ -304,6 +314,15 @@ EXPORT_SYMBOL_GPL(platform_device_add_data);
  *
  * This is part 2 of platform_device_register(), though may be called
  * separately _iff_ pdev was allocated by platform_device_alloc().
+ */
+
+/**
+ * @brief 它可以用来添加一个已经分配内存的 platform_device 结构体。
+ * 
+ * 这个函数与 platform_device_alloc() 函数一起使用，platform_device_alloc() 函数只负责为 platform_device 结构体分配内存并初始化其变量
+ * 
+ * @param pdev 
+ * @return int 
  */
 int platform_device_add(struct platform_device *pdev)
 {
@@ -392,6 +411,12 @@ EXPORT_SYMBOL_GPL(platform_device_add);
  * resources owned by the device (@dev->resource).  This function must
  * _only_ be externally called in error cases.  All other usage is a bug.
  */
+
+/**
+ * @brief 删除一个已经注册的 platform_device
+ * 
+ * @param pdev 
+ */
 void platform_device_del(struct platform_device *pdev)
 {
 	int i;
@@ -416,6 +441,15 @@ EXPORT_SYMBOL_GPL(platform_device_del);
 /**
  * platform_device_register - add a platform-level device
  * @pdev: platform device we're adding
+ */
+
+/**
+ * @brief 用来注册一个实现好的 platform_device 结构体，从而注册一个 platform 设备。
+ * 
+ * 如果有多个 platform 设备，可以使用 platform_add_devices() 函数。
+ * 
+ * @param pdev 
+ * @return int 
  */
 int platform_device_register(struct platform_device *pdev)
 {
