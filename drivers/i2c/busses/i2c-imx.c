@@ -428,7 +428,7 @@ static void i2c_imx_dma_callback(void *arg)
 }
 
 /**
- * @brief 使用DMA传输消息
+ * @brief 配置DMA的传输参数，并启动DMA传输
  * 
  * 它首先将消息缓冲区映射到DMA地址空间，然后准备一个DMA异步传输描述符，设置回调函数和参数，提交并发出DMA传输请求。
  * 如果发生任何错误，它将终止DMA传输并取消映射缓冲区
@@ -776,6 +776,13 @@ static irqreturn_t i2c_imx_isr(int irq, void *dev_id)
 	return IRQ_NONE;
 }
 
+/**
+ * @brief DMA方式写入
+ * 
+ * @param i2c_imx 
+ * @param msgs 
+ * @return int 
+ */
 static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 					struct i2c_msg *msgs)
 {
@@ -786,14 +793,15 @@ static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 	struct imx_i2c_dma *dma = i2c_imx->dma;
 	struct device *dev = &i2c_imx->adapter.dev;
 
-	dma->chan_using = dma->chan_tx;
-	dma->dma_transfer_dir = DMA_MEM_TO_DEV;
-	dma->dma_data_dir = DMA_TO_DEVICE;
-	dma->dma_len = msgs->len - 1;
-	result = i2c_imx_dma_xfer(i2c_imx, msgs);
+	dma->chan_using = dma->chan_tx;				// 当前的DMA通道
+	dma->dma_transfer_dir = DMA_MEM_TO_DEV;		// 当前的DMA传输方向
+	dma->dma_data_dir = DMA_TO_DEVICE;			// 当前的DMA数据方向
+	dma->dma_len = msgs->len - 1;				// DMA传输数据的长度
+	result = i2c_imx_dma_xfer(i2c_imx, msgs);	// 配置DMA的传输参数，并启动DMA传输
 	if (result)
 		return result;
 
+	// 使能I2C控制器的DMA使能位
 	temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 	temp |= I2CR_DMAEN;
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
@@ -802,8 +810,13 @@ static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 	 * Write slave address.
 	 * The first byte must be transmitted by the CPU.
 	 */
+	// 把要写入的设备地址左移一位，并写入到 I2C 的数据寄存器（I2DR）。
+	// 这是因为 I2C 协议要求第一位表示读或写操作，所以要空出一位。
+	// 注意这个操作必须由 CPU 来完成，不能由 DMA 来完成。
 	imx_i2c_write_reg(msgs->addr << 1, i2c_imx, IMX_I2C_I2DR);
 	reinit_completion(&i2c_imx->dma->cmd_complete);
+
+	// 等待 DMA 传输完成的信号。如果超时没有收到信号，就终止 DMA 传输，并返回错误码 ETIMEDOUT
 	time_left = wait_for_completion_timeout(
 				&i2c_imx->dma->cmd_complete,
 				msecs_to_jiffies(DMA_TIMEOUT));
@@ -813,6 +826,9 @@ static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 	}
 
 	/* Waiting for transfer complete. */
+	// 如果收到信号，就循环检查 I2C 的状态寄存器（I2SR）的第零位（ICF），表示是否有数据被传输。
+	// 如果为 1，则跳出循环；如果为 0，则继续等待。
+	// 如果超过了设定的超时时间，则打印调试信息，并返回错误码 ETIMEDOUT
 	while (1) {
 		temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
 		if (temp & I2SR_ICF)
@@ -825,13 +841,21 @@ static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 		schedule();
 	}
 
+	// 把 I2C 的控制寄存器（I2CR）的第七位（DMAEN）清零，表示关闭 DMA 模式
 	temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 	temp &= ~I2CR_DMAEN;
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
 
 	/* The last data byte must be transferred by the CPU. */
+	// 最后，把要写入的最后一个字节数据写入到 I2C 的数据寄存器（I2DR）。
+	// 注意这个操作也必须由 CPU 来完成，不能由 DMA 来完成
+	// I2C 协议要求每个字节传输后，接收方要发送一个应答信号（ACK 或 NACK），表示是否成功接收。如果是 ACK，则表示可以继续传输下一个字节；如果是 NACK，则表示要停止传输。
+	// DMA 只能负责数据的传输，不能负责应答信号的检测和处理。因此，如果用 DMA 来传输最后一个字节，就无法知道是否得到了正确的应答信号。
+	// 为了保证数据的完整性和正确性，最后一个字节需要由 CPU 来传输，并检查应答信号。如果得到了 ACK，则表示传输成功；如果得到了 NACK，则表示传输失败，并可能需要重试或报错
 	imx_i2c_write_reg(msgs->buf[msgs->len-1],
 				i2c_imx, IMX_I2C_I2DR);
+	
+	// 等待传输是否成功并且得到应答信号
 	result = i2c_imx_trx_complete(i2c_imx);
 	if (result)
 		return result;
@@ -839,6 +863,14 @@ static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 	return i2c_imx_acked(i2c_imx);
 }
 
+/**
+ * @brief DMA方式读取
+ * 
+ * @param i2c_imx 
+ * @param msgs 
+ * @param is_lastmsg 
+ * @return int 
+ */
 static int i2c_imx_dma_read(struct imx_i2c_struct *i2c_imx,
 			struct i2c_msg *msgs, bool is_lastmsg)
 {
