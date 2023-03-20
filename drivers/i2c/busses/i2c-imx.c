@@ -82,8 +82,8 @@
  */
 #define IMX_I2C_IADR	0x00	/* i2c slave address */
 #define IMX_I2C_IFDR	0x01	/* i2c frequency divider */
-#define IMX_I2C_I2CR	0x02	/* i2c control */
-#define IMX_I2C_I2SR	0x03	/* i2c status */
+#define IMX_I2C_I2CR	0x02	/* i2c control */				// I2C控制寄存器
+#define IMX_I2C_I2SR	0x03	/* i2c status */				// I2C状态寄存器
 #define IMX_I2C_I2DR	0x04	/* i2c transfer data */
 
 #define IMX_I2C_REGSHIFT	2
@@ -131,8 +131,8 @@
  * Duplicated divider values removed from list
  */
 struct imx_i2c_clk_pair {
-	u16	div;
-	u16	val;
+	u16	div;	// 分频值
+	u16	val;	// 对应写入IFDR值
 };
 
 static struct imx_i2c_clk_pair imx_i2c_clk_div[] = {
@@ -177,34 +177,35 @@ enum imx_i2c_type {
 };
 
 struct imx_i2c_hwdata {
-	enum imx_i2c_type	devtype;
-	unsigned		regshift;
-	struct imx_i2c_clk_pair	*clk_div;
-	unsigned		ndivs;
-	unsigned		i2sr_clr_opcode;
-	unsigned		i2cr_ien_opcode;
+	enum imx_i2c_type	devtype;		// 表示控制器的类型
+	unsigned		regshift;			// 表示寄存器地址偏移量，用于适配不同版本的i2c控制器
+	struct imx_i2c_clk_pair	*clk_div;	// 指向一个imx_i2c_clk_pair类型的数组，用于设置i2c时钟分频比
+	unsigned		ndivs;				// 表示clk_div数组的长度
+	unsigned		i2sr_clr_opcode;	// 表示清除i2c状态寄存器（I2SR）中位的操作码，不同版本的i2c控制器可能需要不同的操作码
+	unsigned		i2cr_ien_opcode;	// 表示使能或者禁止i2c控制寄存器（I2CR）中的中断使能位（IEN）的操作码，不同版本的i2c控制器可能需要不同的操作码
 };
 
+// imx_i2c_dma结构体也是定义在本文件中的一个数据类型，它包含了DMA传输所需的通道和完成标志等信息
 struct imx_i2c_dma {
-	struct dma_chan		*chan_tx;
-	struct dma_chan		*chan_rx;
-	struct dma_chan		*chan_using;
-	struct completion	cmd_complete;
-	dma_addr_t		dma_buf;
-	unsigned int		dma_len;
-	enum dma_transfer_direction dma_transfer_dir;
-	enum dma_data_direction dma_data_dir;
+	struct dma_chan		*chan_tx;					// 指向rx dma 通道，用于发送i2c数据
+	struct dma_chan		*chan_rx;					// 指向tx dma 通道，用于接收i2c数据
+	struct dma_chan		*chan_using;				// 指向当前使用的dma通道，可以是chan_tx或者chan_rx
+	struct completion	cmd_complete;				// 完成标志，用于等待DMA传输完成
+	dma_addr_t		dma_buf;						// dma缓冲区地址，用于存储i2c数据
+	unsigned int		dma_len;					// dma缓冲区长度，单位是字节
+	enum dma_transfer_direction dma_transfer_dir;	// dma传输的方向，可以是内存到设备（MEM_TO_DEV）或者从设备到内存（DEV_TO_MEM）
+	enum dma_data_direction dma_data_dir;			// 表示dma数据的方向，可以是写入（write）或者读取（read）
 };
 
 struct imx_i2c_struct {
-	struct i2c_adapter	adapter;
-	struct clk		*clk;
-	void __iomem		*base;
-	wait_queue_head_t	queue;
+	struct i2c_adapter	adapter;					// I2C适配器
+	struct clk		*clk;							// 时钟源
+	void __iomem		*base;						// 寄存器基地址
+	wait_queue_head_t	queue;						// 等待队列
 	unsigned long		i2csr;
-	unsigned int		disable_delay;
+	unsigned int		disable_delay;				// 在关闭i2c控制器之前需要等待的事件（us），这个时间应该大约等于一个I2C时钟周期的长度，这个延迟用来修复芯片硬件的bug的
 	int			stopped;
-	unsigned int		ifdr; /* IMX_I2C_IFDR */		// I2C IFDR 寄存器，用于设置I2C时钟分频
+	unsigned int		ifdr; /* IMX_I2C_IFDR */	// I2C IFDR 寄存器，用于设置I2C时钟分频
 	unsigned int		cur_clk;
 	unsigned int		bitrate;
 	const struct imx_i2c_hwdata	*hwdata;
@@ -217,8 +218,8 @@ static const struct imx_i2c_hwdata imx1_i2c_hwdata  = {
 	.regshift		= IMX_I2C_REGSHIFT,				// 寄存器偏移
 	.clk_div		= imx_i2c_clk_div,				// 时钟分频表
 	.ndivs			= ARRAY_SIZE(imx_i2c_clk_div),	// 支持的分频系数个数
-	.i2sr_clr_opcode	= I2SR_CLR_OPCODE_W0C,
-	.i2cr_ien_opcode	= I2CR_IEN_OPCODE_1,
+	.i2sr_clr_opcode	= I2SR_CLR_OPCODE_W0C,		// 清除i2c状态寄存器（I2SR）中位的操作码
+	.i2cr_ien_opcode	= I2CR_IEN_OPCODE_1,		// 使能或者禁止i2c控制寄存器（I2CR）中的中断使能位（IEN）的操作码
 
 };
 
@@ -242,9 +243,15 @@ static struct imx_i2c_hwdata vf610_i2c_hwdata = {
 
 };
 
+/**
+ * @brief 在内核模块中注册一个平台设备的ID表
+ * 
+ * 用于在非设备树情况下，根据平台设备的名称和实例号来匹配驱动程序
+ * 
+ */
 static struct platform_device_id imx_i2c_devtype[] = {
 	{
-		.name = "imx1-i2c",
+		.name = "imx1-i2c",									// 内核加载这个模块是，根据该名称匹配对应的驱动程序
 		.driver_data = (kernel_ulong_t)&imx1_i2c_hwdata,
 	}, {
 		.name = "imx21-i2c",
@@ -253,27 +260,53 @@ static struct platform_device_id imx_i2c_devtype[] = {
 		/* sentinel */
 	}
 };
-MODULE_DEVICE_TABLE(platform, imx_i2c_devtype);
+MODULE_DEVICE_TABLE(platform, imx_i2c_devtype);				// 生成一个名为 __mod_platform_device_table 的结构体数组
 
+/**
+ * @brief 描述了i2c控制器的设备树兼容性和硬件数据
+ * 
+ * 用于在设备树的情况下，在内核模块中注册一个设备树的ID表
+ * 
+ */
 static const struct of_device_id i2c_imx_dt_ids[] = {
-	{ .compatible = "fsl,imx1-i2c", .data = &imx1_i2c_hwdata, },
+	{ .compatible = "fsl,imx1-i2c", .data = &imx1_i2c_hwdata, },		// 当内核加载这个模块时，根据compatible属性值来匹配对应的驱动程序
 	{ .compatible = "fsl,imx21-i2c", .data = &imx21_i2c_hwdata, },
 	{ .compatible = "fsl,vf610-i2c", .data = &vf610_i2c_hwdata, },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, i2c_imx_dt_ids);
+MODULE_DEVICE_TABLE(of, i2c_imx_dt_ids);					// 生成一个名为 __mode_of_device_table 的结构体数组
 
+/**
+ * @brief IP是否是imx1 i2c
+ * 
+ * @param i2c_imx 
+ * @return int 
+ */
 static inline int is_imx1_i2c(struct imx_i2c_struct *i2c_imx)
 {
 	return i2c_imx->hwdata->devtype == IMX1_I2C;
 }
 
+/**
+ * @brief 写寄存器
+ * 
+ * @param val 
+ * @param i2c_imx 
+ * @param reg 
+ */
 static inline void imx_i2c_write_reg(unsigned int val,
 		struct imx_i2c_struct *i2c_imx, unsigned int reg)
 {
 	writeb(val, i2c_imx->base + (reg << i2c_imx->hwdata->regshift));
 }
 
+/**
+ * @brief 读寄存器
+ * 
+ * @param i2c_imx 
+ * @param reg 
+ * @return unsigned char 
+ */
 static inline unsigned char imx_i2c_read_reg(struct imx_i2c_struct *i2c_imx,
 		unsigned int reg)
 {
@@ -281,30 +314,54 @@ static inline unsigned char imx_i2c_read_reg(struct imx_i2c_struct *i2c_imx,
 }
 
 /* Functions for DMA support */
+/**
+ * @brief 请求DMA
+ * 
+ * @param i2c_imx 
+ * @param phy_addr DMA传输时需要访问的内存地址
+ */
 static void i2c_imx_dma_request(struct imx_i2c_struct *i2c_imx,
 						dma_addr_t phy_addr)
 {
+	// 指向imx_i2c_dma结构体的指针变量dma
 	struct imx_i2c_dma *dma;
+	// dma_slave_config结构体是定义在DMA引擎框架中的一个数据类型，它包含了DMA从设备（即I2C设备）的配置信息，如地址、宽度、方向等
 	struct dma_slave_config dma_sconfig;
+
+	// 定义了一个指向device结构体的指针变量dev，并将其初始化为i2c_imx结构体中adapter成员（即I2C适配器）中dev成员（即设备）的地址。
+	// （device结构体是定义在Linux内核中的一个通用数据类型，它表示任何一种硬件或软件设备，并提供了一些基本属性和操作方法。）
 	struct device *dev = &i2c_imx->adapter.dev;
 	int ret;
 
-	dma = devm_kzalloc(dev, sizeof(*dma), GFP_KERNEL);
+	// devm_kzalloc函数是定义在Linux内核中的一个内存管理函数，
+	// 它接受三个参数：第一个是要分配内存所属的设备，第二个是要分配的内存大小，第三个是分配标志。
+	// 这里使用GFP_KERNEL表示正常的内核内存分配。这个函数会返回一个指向分配好的内存区域的指针，并且在设备注销时自动释放。
+	dma = devm_kzalloc(dev, sizeof(*dma), GFP_KERNEL);			// 为DMA指针分配内存
 	if (!dma)
 		return;
 
-	dma->chan_tx = dma_request_slave_channel(dev, "tx");
+	// dma_request_slave_channel函数是定义在DMA引擎框架中的一个通道管理函数，
+	// 它接受两个参数：第一个是要申请通道所属的设备，第二个是要申请通道的名字。
+	// 这里使用"tx"表示传输方向为从内存到设备。
+	// 这个函数会返回一个指向申请好的通道结构体的指针，并且在设备注销时自动释放
+	dma->chan_tx = dma_request_slave_channel(dev, "tx");		// 申请TX通道
 	if (!dma->chan_tx) {
 		dev_dbg(dev, "can't request DMA tx channel\n");
 		goto fail_al;
 	}
 
+	// 设置DMA从设备配置结构体中目标地址为物理地址加上I2DR寄存器偏移量
+	// I2DR寄存器是I2C设备中用于读写数据的寄存器，它有一个固定的偏移量IMX_I2C_I2DR。
 	dma_sconfig.dst_addr = phy_addr +
 				(IMX_I2C_I2DR << i2c_imx->hwdata->regshift);
+	// 设置DMA从设备配置结构体中目标地址宽度为1字节
+	// DMA_SLAVE_BUSWIDTH_1_BYTE是定义在DMA引擎框架中的一个枚举常量，它表示每次传输1字节数据。
 	dma_sconfig.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
+	// 设置DMA从设备配置结构体中目标最大突发传输数为1
+	// 突发传输数表示每次触发一次DMA传输时可以连续传输多少个数据块。这里设置为1表示每次只传输一个数据块。
 	dma_sconfig.dst_maxburst = 1;
 	dma_sconfig.direction = DMA_MEM_TO_DEV;
-	ret = dmaengine_slave_config(dma->chan_tx, &dma_sconfig);
+	ret = dmaengine_slave_config(dma->chan_tx, &dma_sconfig);	// 配置TX通道
 	if (ret < 0) {
 		dev_dbg(dev, "can't configure tx channel\n");
 		goto fail_tx;
@@ -321,7 +378,7 @@ static void i2c_imx_dma_request(struct imx_i2c_struct *i2c_imx,
 	dma_sconfig.src_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
 	dma_sconfig.src_maxburst = 1;
 	dma_sconfig.direction = DMA_DEV_TO_MEM;
-	ret = dmaengine_slave_config(dma->chan_rx, &dma_sconfig);
+	ret = dmaengine_slave_config(dma->chan_rx, &dma_sconfig);	// 配置RX通道
 	if (ret < 0) {
 		dev_dbg(dev, "can't configure rx channel\n");
 		goto fail_rx;
@@ -343,16 +400,44 @@ fail_al:
 	dev_info(dev, "can't use DMA\n");
 }
 
+/**
+ * @brief DMA完成的回调函数
+ * 
+ * @param arg 
+ */
 static void i2c_imx_dma_callback(void *arg)
 {
 	struct imx_i2c_struct *i2c_imx = (struct imx_i2c_struct *)arg;
 	struct imx_i2c_dma *dma = i2c_imx->dma;
 
+	// 解除DMA映射
+	// ma_unmap_single函数是定义在DMA引擎框架中的一个映射管理函数，它接受四个参数：
+	// 第一个是要解除映射的设备指针，
+	// 第二个是要解除映射的缓冲区地址，
+	// 第三个是要解除映射的缓冲区长度，
+	// 第四个是要解除映射的传输方向。
+	// 这个函数会将缓冲区从设备地址空间中移除，并同步其内容到内存地址空间中
 	dma_unmap_single(dma->chan_using->device->dev, dma->dma_buf,
 			dma->dma_len, dma->dma_data_dir);
+
+	// 通知命令完成
+	// complete函数是定义在Linux内核中的一个同步机制函数，它接受一个参数：
+	// 要通知完成状态的completion结构体指针。
+	// 这个函数会将该结构体中的计数器加一，并唤醒等待该事件完成的进程或线程
 	complete(&dma->cmd_complete);
 }
 
+/**
+ * @brief 使用DMA传输消息
+ * 
+ * 它首先将消息缓冲区映射到DMA地址空间，然后准备一个DMA异步传输描述符，设置回调函数和参数，提交并发出DMA传输请求。
+ * 如果发生任何错误，它将终止DMA传输并取消映射缓冲区
+ * 
+ * @param i2c_imx 
+ * @param msgs 
+ * @return int 	0：		 成功
+ * 				-EINVAL：失败
+ */
 static int i2c_imx_dma_xfer(struct imx_i2c_struct *i2c_imx,
 					struct i2c_msg *msgs)
 {
@@ -361,6 +446,8 @@ static int i2c_imx_dma_xfer(struct imx_i2c_struct *i2c_imx,
 	struct device *dev = &i2c_imx->adapter.dev;
 	struct device *chan_dev = dma->chan_using->device->dev;
 
+	// 将消息缓冲区映射到，并返回一个DMA地址
+	// 这样，dma控制器就可以访问缓冲区中的数据了
 	dma->dma_buf = dma_map_single(chan_dev, msgs->buf,
 					dma->dma_len, dma->dma_data_dir);
 	if (dma_mapping_error(chan_dev, dma->dma_buf)) {
@@ -368,6 +455,7 @@ static int i2c_imx_dma_xfer(struct imx_i2c_struct *i2c_imx,
 		goto err_map;
 	}
 
+	// 准备一个DMA异步传输描述符
 	txdesc = dmaengine_prep_slave_single(dma->chan_using, dma->dma_buf,
 					dma->dma_len, dma->dma_transfer_dir,
 					DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
@@ -376,13 +464,17 @@ static int i2c_imx_dma_xfer(struct imx_i2c_struct *i2c_imx,
 		goto err_desc;
 	}
 
+	// 设置描述符的回调函数和参数
 	txdesc->callback = i2c_imx_dma_callback;
 	txdesc->callback_param = i2c_imx;
+
+	// 提交描述符到DMA引擎，并返回一个cookie值。如果提交失败（cookie值为负），函数会打印错误信息并终止之前映射的缓冲区，并返回-EINVAL
 	if (dma_submit_error(dmaengine_submit(txdesc))) {
 		dev_err(dev, "DMA submit failed\n");
 		goto err_submit;
 	}
 
+	// 在当前使用中的DMA通道上发出DMA传输请求，并返回0表示成功
 	dma_async_issue_pending(dma->chan_using);
 	return 0;
 
@@ -415,11 +507,11 @@ static void i2c_imx_dma_free(struct imx_i2c_struct *i2c_imx)
 *******************************************************************************/
 
 /**
- * @brief 判断是否在指定的状态
+ * @brief 检查总线是否忙碌（为1）还是空闲（为0）
  * 
  * @param i2c_imx 
  * @param for_busy 1：判断是否在busy   0：判断是否在idle
- * @return int 
+ * @return int 如果返回0，表示检查成功；如果返回-EAGAIN，表示总线发生仲裁丢失；如果返回-ETIMEDOUT，表示检查超时
  */
 static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy)
 {
@@ -432,31 +524,55 @@ static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy)
 		temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
 
 		/* check for arbitration lost */
+		// 检查IAL位是否为1，如果是，则表示总线发生仲裁丢失。
+		// 此时，将temp变量的IAL位清零，并写回I2SR寄存器。
+		// 然后退出循环，并返回-EAGAIN
 		if (temp & I2SR_IAL) {
 			temp &= ~I2SR_IAL;
 			imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2SR);
 			return -EAGAIN;
 		}
 
+		// 根据for_busy参数的值，检查temp变量的IBB位是否为1或0。
+		// IBB位表示总线是否忙碌。
+		// 如果for_busy为1，则等待IBB位为1；
+		// 如果for_busy为0，则等待IBB位为0。
+		// 如果满足条件，则退出循环，并返回0。
 		if (for_busy && (temp & I2SR_IBB))
 			break;
 		if (!for_busy && !(temp & I2SR_IBB))
 			break;
+
+		// 如果在500毫秒内没有满足条件，则打印一条调试信息，并返回-ETIMEDOUT
 		if (time_after(jiffies, orig_jiffies + msecs_to_jiffies(500))) {
 			dev_dbg(&i2c_imx->adapter.dev,
 				"<%s> I2C bus is busy\n", __func__);
 			return -ETIMEDOUT;
 		}
+
+		// 如果没有退出循环，则调用schedule函数让出CPU时间片给其他进程
 		schedule();
 	}
 
 	return 0;
 }
 
+/**
+ * @brief 等待I2C传输完成，并返回相应的状态码
+ * 
+ * @param i2c_imx 
+ * @return int 如果返回0，表示传输成功；如果返回-ETIMEDOUT，表示传输超时
+ */
 static int i2c_imx_trx_complete(struct imx_i2c_struct *i2c_imx)
 {
+	// 阻塞当前进程，直到i2c_imx->queue上有事件发生或者超过HZ / 10秒（HZ是内核定义的每秒中断次数）。
+	// 事件的条件是i2c_imx->i2csr中的IIF位为1，这个位表示I2C中断请求发生。
 	wait_event_timeout(i2c_imx->queue, i2c_imx->i2csr & I2SR_IIF, HZ / 10);
 
+	// unlikely是一个宏，它用来给编译器提供一个提示，表示某个条件很少为真。
+	// 这样，编译器可以优化代码的执行路径，提高性能。
+	// 在这段代码中，表示传输超时的情况很少发生。
+	// （从上面的函数退出，要么超时，要么等到这个事件，所以只需要判断事件是否存在，则可以判断是否超时）
 	if (unlikely(!(i2c_imx->i2csr & I2SR_IIF))) {
 		dev_dbg(&i2c_imx->adapter.dev, "<%s> Timeout\n", __func__);
 		return -ETIMEDOUT;
@@ -466,6 +582,12 @@ static int i2c_imx_trx_complete(struct imx_i2c_struct *i2c_imx)
 	return 0;
 }
 
+/**
+ * @brief 检查i2c控制器是否接收到ACK信号
+ * 
+ * @param i2c_imx 
+ * @return int 
+ */
 static int i2c_imx_acked(struct imx_i2c_struct *i2c_imx)
 {
 	if (imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR) & I2SR_RXAK) {
@@ -477,6 +599,13 @@ static int i2c_imx_acked(struct imx_i2c_struct *i2c_imx)
 	return 0;
 }
 
+/**
+ * @brief 设置时钟分频
+ * 
+ * 根据I2C时钟的速率和期望的比特率来计算一个合适的分频值
+ * 
+ * @param i2c_imx 
+ */
 static void i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx)
 {
 	struct imx_i2c_clk_pair *i2c_clk_div = i2c_imx->hwdata->clk_div;
@@ -485,18 +614,25 @@ static void i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx)
 	int i;
 
 	/* Divider value calculation */
+	// 获取i2c时钟的速率，并判断是否需要更新分频值
 	i2c_clk_rate = clk_get_rate(i2c_imx->clk);
 	if (i2c_imx->cur_clk == i2c_clk_rate)
 		return;
 
 	i2c_imx->cur_clk = i2c_clk_rate;
 
+	// 计算分频值
+	// 分频值是通过将 I2C 时钟速率除以期望的比特率得到的。
+	// 例如，如果 I2C 时钟速率是 66 MHz，而期望的比特率是 400 KHz，那么分频值就是 66/0.4 = 165。
+	// 但是，并不是所有的分频值都有效，只有一些预定义的分频值才能被写入 IFDR（I2C 频率分割寄存器）中。
+	// 这些预定义的分频值和对应的寄存器值都存储在一个名为 i2c_clk_div 的数组中。
 	div = (i2c_clk_rate + i2c_imx->bitrate - 1) / i2c_imx->bitrate;
-	if (div < i2c_clk_div[0].div)
+	if (div < i2c_clk_div[0].div)		// 最小的分频值
 		i = 0;
 	else if (div > i2c_clk_div[i2c_imx->hwdata->ndivs - 1].div)
-		i = i2c_imx->hwdata->ndivs - 1;
+		i = i2c_imx->hwdata->ndivs - 1;	// 最大的分频值
 	else
+		// 通过遍历这个数组来找到最接近计算出来的分频值（div）的预定义分频值
 		for (i = 0; i2c_clk_div[i].div < div; i++)
 			;
 
@@ -509,6 +645,8 @@ static void i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx)
 	 * This delay is used in I2C bus disable function
 	 * to fix chip hardware bug.
 	 */
+	// 在关闭i2c控制器之前需要等待的事件（us），这个时间应该大约等于一个I2C时钟周期的长度，这个延迟用来修复芯片硬件的bug的
+	// 计算公式：disable_delay = (500000 * 分频值 + (时钟速率 / 2) - 1) / (时钟速率 / 2)
 	i2c_imx->disable_delay = (500000U * i2c_clk_div[i].div
 		+ (i2c_clk_rate / 2) - 1) / (i2c_clk_rate / 2);
 
@@ -520,6 +658,12 @@ static void i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx)
 #endif
 }
 
+/**
+ * @brief 启动i2c控制器，并开始一次i2c事务
+ * 
+ * @param i2c_imx 
+ * @return int 
+ */
 static int i2c_imx_start(struct imx_i2c_struct *i2c_imx)
 {
 	unsigned int temp = 0;
@@ -527,34 +671,44 @@ static int i2c_imx_start(struct imx_i2c_struct *i2c_imx)
 
 	dev_dbg(&i2c_imx->adapter.dev, "<%s>\n", __func__);
 
-	i2c_imx_set_clk(i2c_imx);
+	i2c_imx_set_clk(i2c_imx);		// 设置时钟分频
 
+	// 准备并使能时钟源对象（struct clk）
 	result = clk_prepare_enable(i2c_imx->clk);
 	if (result)
 		return result;
 	imx_i2c_write_reg(i2c_imx->ifdr, i2c_imx, IMX_I2C_IFDR);
 	/* Enable I2C controller */
-	imx_i2c_write_reg(i2c_imx->hwdata->i2sr_clr_opcode, i2c_imx, IMX_I2C_I2SR);
-	imx_i2c_write_reg(i2c_imx->hwdata->i2cr_ien_opcode, i2c_imx, IMX_I2C_I2CR);
+	imx_i2c_write_reg(i2c_imx->hwdata->i2sr_clr_opcode, i2c_imx, IMX_I2C_I2SR);	// 清除I2C状态寄存器（I2SR）中的所有位
+	imx_i2c_write_reg(i2c_imx->hwdata->i2cr_ien_opcode, i2c_imx, IMX_I2C_I2CR);	// 使能I2C控制寄存器（I2CR）
 
 	/* Wait controller to be stable */
+	// 延迟，等待控制器稳定
 	udelay(50);
 
 	/* Start I2C transaction */
+	// 设置为MASTER模式
 	temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 	temp |= I2CR_MSTA;
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
+
 	result = i2c_imx_bus_busy(i2c_imx, 1);
 	if (result)
 		return result;
 	i2c_imx->stopped = 0;
 
+	// 使能中断、处于传输模式、发送非应答信号、禁用DMA
 	temp |= I2CR_IIEN | I2CR_MTX | I2CR_TXAK;
 	temp &= ~I2CR_DMAEN;
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
 	return result;
 }
 
+/**
+ * @brief 停止I2C事务
+ * 
+ * @param i2c_imx 
+ */
 static void i2c_imx_stop(struct imx_i2c_struct *i2c_imx)
 {
 	unsigned int temp = 0;
@@ -562,17 +716,24 @@ static void i2c_imx_stop(struct imx_i2c_struct *i2c_imx)
 	if (!i2c_imx->stopped) {
 		/* Stop I2C transaction */
 		dev_dbg(&i2c_imx->adapter.dev, "<%s>\n", __func__);
+		// MSTA位清零，表示控制器退出主机模式，并发送停止信号
+		// MTX位清零，表示控制器处于接收模式
 		temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 		temp &= ~(I2CR_MSTA | I2CR_MTX);
 		if (i2c_imx->dma)
 			temp &= ~I2CR_DMAEN;
 		imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
 	}
+
+	// IP是否是imx1 i2c
 	if (is_imx1_i2c(i2c_imx)) {
 		/*
 		 * This delay caused by an i.MXL hardware bug.
 		 * If no (or too short) delay, no "STOP" bit will be generated.
 		 */
+		// 调用udelay函数，传入i2c_imx结构体中disable_delay字段作为参数。
+		// udelay函数是用来延迟一定时间的，单位是微秒。
+		// 这里延迟一定时间是为了解决一个i.MXL硬件bug，如果没有（或延迟太短），则不会生成停止位。
 		udelay(i2c_imx->disable_delay);
 	}
 
@@ -582,27 +743,36 @@ static void i2c_imx_stop(struct imx_i2c_struct *i2c_imx)
 	}
 
 	/* Disable I2C controller */
-	temp = i2c_imx->hwdata->i2cr_ien_opcode ^ I2CR_IEN,
+	temp = i2c_imx->hwdata->i2cr_ien_opcode ^ I2CR_IEN,	// 禁用I2C控制器
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
-	clk_disable_unprepare(i2c_imx->clk);
+	clk_disable_unprepare(i2c_imx->clk);	// 关闭并释放时钟资源
 }
 
+/**
+ * @brief i2c中断服务程序
+ * 
+ * @param irq 		中断号
+ * @param dev_id 	回调参数
+ * @return irqreturn_t 
+ */
 static irqreturn_t i2c_imx_isr(int irq, void *dev_id)
 {
 	struct imx_i2c_struct *i2c_imx = dev_id;
 	unsigned int temp;
 
+	// 读取状态寄存器，判断IIF中断状态，是否有中断产生
 	temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
 	if (temp & I2SR_IIF) {
 		/* save status register */
 		i2c_imx->i2csr = temp;
-		temp &= ~I2SR_IIF;
-		temp |= (i2c_imx->hwdata->i2sr_clr_opcode & I2SR_IIF);
+		temp &= ~I2SR_IIF;		// 清除中断标志
+		temp |= (i2c_imx->hwdata->i2sr_clr_opcode & I2SR_IIF);	// 写入操作码
 		imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2SR);
-		wake_up(&i2c_imx->queue);
-		return IRQ_HANDLED;
+		wake_up(&i2c_imx->queue);	// 唤醒等待队列里的进程
+		return IRQ_HANDLED;			// 返回IRQ_HANDLED，表示中断已经被处理
 	}
 
+	// 返回IRQ_NONE，表示没有中断发生，没有处理任何中断
 	return IRQ_NONE;
 }
 
