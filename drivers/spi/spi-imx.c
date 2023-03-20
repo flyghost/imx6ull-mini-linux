@@ -63,10 +63,10 @@
 			     len * DIV_ROUND_UP(IMX_DEFAULT_DMA_TIMEOUT, \
 			     0x100000))
 struct spi_imx_config {
-	unsigned int speed_hz;
-	unsigned int bpw;
-	unsigned int mode;
-	u8 cs;
+	unsigned int speed_hz;  // 配置速度（以 Hz 为单位）
+	unsigned int bpw;       // 每字位数
+	unsigned int mode;      // 模式
+	u8 cs;                  // 片选
 };
 
 enum spi_imx_devtype {
@@ -91,35 +91,35 @@ struct spi_imx_devtype_data {
 };
 
 struct spi_imx_data {
-	struct spi_bitbang bitbang;
+	struct spi_bitbang bitbang;         // 用于执行位操作
 
-	struct completion xfer_done;
-	void __iomem *base;
-	struct clk *clk_per;
-	struct clk *clk_ipg;
-	unsigned long spi_clk;
+	struct completion xfer_done;        // 用于指示传输何时完成
+	void __iomem *base;                 // 寄存器基地址
+	struct clk *clk_per;                // 外设时钟
+	struct clk *clk_ipg;                // IPG 时钟
+	unsigned long spi_clk;              // 存储 SPI 时钟速率
 
-	unsigned int count;
-	void (*tx)(struct spi_imx_data *);
-	void (*rx)(struct spi_imx_data *);
-	void *rx_buf;
-	const void *tx_buf;
-	unsigned int txfifo; /* number of words pushed in tx FIFO */
+	unsigned int count;                 // 存储传输的字节数
+	void (*tx)(struct spi_imx_data *);  // 执行发送操作
+	void (*rx)(struct spi_imx_data *);  // 执行接收操作
+	void *rx_buf;                       // 接收缓冲区
+	const void *tx_buf;                 // 发送缓冲区
+	unsigned int txfifo; /* number of words pushed in tx FIFO */    // 存储已经发送到fifo中的字节数
 
 	/* DMA */
-	unsigned int dma_is_inited;
-	unsigned int dma_finished;
-	bool usedma;
-	u32 rx_wml;
-	u32 tx_wml;
-	u32 rxt_wml;
-	struct completion dma_rx_completion;
-	struct completion dma_tx_completion;
-	struct dma_slave_config rx_config;
-	struct dma_slave_config tx_config;
+	unsigned int dma_is_inited;         // 指示 DMA 是否已初始化
+	unsigned int dma_finished;          // 指示 DMA 传输是否已完成
+	bool usedma;                        // 指示是否使用 DMA 进行传输
+	u32 rx_wml;                         // 存储接收水位线
+	u32 tx_wml;                         // 存储发送水位线
+	u32 rxt_wml;                        // 存储接收/发送触发器水位线
+	struct completion dma_rx_completion;    // 指示 DMA 接收操作何时完成
+	struct completion dma_tx_completion;    // 指示 DMA 发送操作何时完成
+	struct dma_slave_config rx_config;      // 用于配置 DMA 接收操作
+	struct dma_slave_config tx_config;      // 用于配置 DMA 发送操作
 
-	const struct spi_imx_devtype_data *devtype_data;
-	int chipselect[0];
+	const struct spi_imx_devtype_data *devtype_data;    // 用于存储设备类型相关的数据
+	int chipselect[0];                                  // 存储芯片选择信息
 };
 
 static inline int is_imx27_cspi(struct spi_imx_data *d)
