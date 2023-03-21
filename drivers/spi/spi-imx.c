@@ -82,12 +82,12 @@ enum spi_imx_devtype {
 struct spi_imx_data;
 
 struct spi_imx_devtype_data {
-	void (*intctrl)(struct spi_imx_data *, int);
-	int (*config)(struct spi_imx_data *, struct spi_imx_config *);
-	void (*trigger)(struct spi_imx_data *);
-	int (*rx_available)(struct spi_imx_data *);
-	void (*reset)(struct spi_imx_data *);
-	enum spi_imx_devtype devtype;
+	void (*intctrl)(struct spi_imx_data *, int);			// 控制SPI中断的使能或者禁止
+	int (*config)(struct spi_imx_data *, struct spi_imx_config *);	// 配置SPI时钟、数据位、极性等参数
+	void (*trigger)(struct spi_imx_data *);				// 触发SPI传输
+	int (*rx_available)(struct spi_imx_data *);			// 判断SPI的接收缓冲区是否有可用的数据
+	void (*reset)(struct spi_imx_data *);				// 复位SPI的寄存器和状态
+	enum spi_imx_devtype devtype;					// 不同的SPI设备类型
 };
 
 struct spi_imx_data {
@@ -132,12 +132,28 @@ static inline int is_imx35_cspi(struct spi_imx_data *d)
 	return d->devtype_data->devtype == IMX35_CSPI;
 }
 
+/**
+ * @brief 根据不同的设备类型，返回FIFO大小
+ * 
+ * @param d 
+ * @return unsigned 
+ */
 static inline unsigned spi_imx_get_fifosize(struct spi_imx_data *d)
 {
 	return (d->devtype_data->devtype == IMX51_ECSPI
 		|| d->devtype_data->devtype == IMX6UL_ECSPI) ? 64 : 8;
 }
 
+/**
+ * @brief 生成一个函数定义，用来从SPI的接收寄存器读取数据，并存储到SPI的接收缓冲区中
+ * 
+ * 从 spi_imx->base + MXC_CSPIRXDATA 这个地址读取一个无符号整数，赋值给 val 变量。
+ * 这个地址是 SPI 的接收寄存器的地址，其中存储了最近一次 SPI 传输的接收数据。
+ * 
+ * 如果 spi_imx->rx_buf 不为空，表示有有效的接收缓冲区，那么就把 val 变量转换成指定的类型，并赋值给 spi_imx->rx_buf 指向的内存位置。
+ * 然后把 spi_imx->rx_buf 指针向后移动相应的字节数，以便下次写入数据
+ * 
+ */
 #define MXC_SPI_BUF_RX(type)						\
 static void spi_imx_buf_rx_##type(struct spi_imx_data *spi_imx)		\
 {									\
@@ -149,6 +165,17 @@ static void spi_imx_buf_rx_##type(struct spi_imx_data *spi_imx)		\
 	}								\
 }
 
+/**
+ * @brief 生成一个函数定义，用来从 SPI 的发送缓冲区读取数据，并写入到 SPI 的发送寄存器中
+ * 
+ * 如果 spi_imx->tx_buf 不为空，表示有有效的发送缓冲区，那么就把 spi_imx->tx_buf 指向的内存位置转换成指定的类型，并赋值给 val 变量。
+ * 然后把 spi_imx->tx_buf 指针向后移动相应的字节数，以便下次读取数据
+ * 
+ * 把 spi_imx->count 变量减去相应的字节数，表示已经发送了一部分数据
+ * 
+ * 把 val 变量写入到 spi_imx->base + MXC_CSPITXDATA 这个地址中。这个地址是 SPI 的发送寄存器的地址，其中存储了要进行下一次 SPI 传输的发送数据
+ * 
+ */
 #define MXC_SPI_BUF_TX(type)						\
 static void spi_imx_buf_tx_##type(struct spi_imx_data *spi_imx)		\
 {									\
@@ -174,15 +201,30 @@ MXC_SPI_BUF_TX(u32)
 /* First entry is reserved, second entry is valid only if SDHC_SPIEN is set
  * (which is currently not the case in this driver)
  */
+// SPI 的时钟分频系数，用来控制 SPI 的时钟速度
 static int mxc_clkdivs[] = {0, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192,
 	256, 384, 512, 768, 1024};
 
 /* MX21, MX27 */
+/**
+ * @brief 根据 SPI 的目标时钟速度 fspi 和主机的时钟速度 fin，从 mxc_clkdivs 数组中选择一个合适的分频系数，并返回其下标
+ * 
+ * @param fin 			主机的时钟速度
+ * @param fspi 			目标时钟速度
+ * @param max			mxc_clkdivs 数组的最大长度，用来限制搜索范围
+ * @return unsigned int 	mxc_clkdivs的下标
+ */
 static unsigned int spi_imx_clkdiv_1(unsigned int fin,
 		unsigned int fspi, unsigned int max)
 {
 	int i;
 
+	/**
+	 * @brief 从 i 等于 2 开始，循环遍历 mxc_clkdivs 数组中的元素，直到 i 等于 max 或者找到一个满足条件的元素为止。
+	 * 
+	 * 条件是 fspi 乘以 mxc_clkdivs[i] 大于等于 fin，表示该分频系数可以使 SPI 的时钟速度不超过目标时钟速度
+	 * 
+	 */
 	for (i = 2; i < max; i++)
 		if (fspi * mxc_clkdivs[i] >= fin)
 			return i;
@@ -191,6 +233,13 @@ static unsigned int spi_imx_clkdiv_1(unsigned int fin,
 }
 
 /* MX1, MX31, MX35, MX51 CSPI */
+/**
+ * @brief 根据 SPI 的目标时钟速度 fspi 和主机的时钟速度 fin，从 4 到 512 之间的一些数值中选择一个合适的分频系数，并返回其对应的位移量
+ * 
+ * @param fin 			主机的时钟速度
+ * @param fspi 			目标时钟速度
+ * @return unsigned int 
+ */
 static unsigned int spi_imx_clkdiv_2(unsigned int fin,
 		unsigned int fspi)
 {
@@ -205,55 +254,96 @@ static unsigned int spi_imx_clkdiv_2(unsigned int fin,
 	return 7;
 }
 
+/**
+ * @brief 判断是否可以使用 DMA（直接内存访问）来进行 SPI 的传输
+ * 
+ * @param master 	SPI 的主控制器
+ * @param spi 		SPI 的设备
+ * @param transfer 	SPI 的传输
+ * @return true 
+ * @return false 
+ */
 static bool spi_imx_can_dma(struct spi_master *master, struct spi_device *spi,
 			 struct spi_transfer *transfer)
 {
+	// 获取 SPI 的驱动数据结构
 	struct spi_imx_data *spi_imx = spi_master_get_devdata(master);
 
+	// 如果 transfer 指针不为空，表示有有效的传输，
+	// 并且 spi_imx->dma_is_inited 为真，表示 DMA 已经初始化，
+	// 并且 transfer->len 大于 spi_imx_get_fifosize(spi_imx) 的返回值，表示传输的长度大于 SPI 的 FIFO 大小，
+	// 那么返回真值，表示可以使用 DMA
 	if (transfer && spi_imx->dma_is_inited &&
 		(transfer->len > spi_imx_get_fifosize(spi_imx)))
 		return true;
 	return false;
 }
 
-#define MX51_ECSPI_CTRL		0x08
-#define MX51_ECSPI_CTRL_ENABLE		(1 <<  0)
-#define MX51_ECSPI_CTRL_XCH		(1 <<  2)
-#define MX51_ECSPI_CTRL_SMC		(1 << 3)
-#define MX51_ECSPI_CTRL_MODE_MASK	(0xf << 4)
-#define MX51_ECSPI_CTRL_POSTDIV_OFFSET	8
-#define MX51_ECSPI_CTRL_PREDIV_OFFSET	12
-#define MX51_ECSPI_CTRL_CS(cs)		((cs) << 18)
-#define MX51_ECSPI_CTRL_BL_OFFSET	20
+#define MX51_ECSPI_CTRL		0x08				// ECSPI 控制寄存器的地址
+#define MX51_ECSPI_CTRL_ENABLE		(1 <<  0)		// ECSPI 控制寄存器的使能位。当该位为 1 时，表示启动 ECSPI 控制器
+#define MX51_ECSPI_CTRL_XCH		(1 <<  2)		// ECSPI 控制寄存器的交换位。当该位为 1 时，表示开始一次 SPI 的传输
+#define MX51_ECSPI_CTRL_SMC		(1 << 3)		// ECSPI 控制寄存器的单主控模式位。当该位为 1 时，表示只有一个主控设备连接到 ECSPI 总线上
+#define MX51_ECSPI_CTRL_MODE_MASK	(0xf << 4)		// ECSPI 控制寄存器的模式掩码。这些位用来设置 SPI 的工作模式，包括时钟极性、时钟相位和数据有效边沿等
+#define MX51_ECSPI_CTRL_POSTDIV_OFFSET	8			// ECSPI 控制寄存器的后分频系数偏移量，为第 8 到第 11 位。这些位用来设置 SPI 的后分频系数，用来进一步降低 SPI 的时钟速度
+#define MX51_ECSPI_CTRL_PREDIV_OFFSET	12			// ECSPI 控制寄存器的预分频系数偏移量，为第 12 到第 15 位。这些位用来设置 SPI 的预分频系数，用来降低 SPI 的时钟速度
+#define MX51_ECSPI_CTRL_CS(cs)		((cs) << 18)		// 表示 SPI 的从设备编号。这个宏的功能是把 cs 的值左移 18 位，得到 ECSPI 控制寄存器的片选位域。
+								// 这些位用来选择 SPI 的从设备，最多可以支持四个从设备
+#define MX51_ECSPI_CTRL_BL_OFFSET	20			// ECSPI 控制寄存器的位长度偏移量，为第 20 到第 23 位。
+								// 这些位用来设置 SPI 的每个字节的位长度，即每次传输的数据位数。最小的位长度为 1，最大的位长度为 32
 
-#define MX51_ECSPI_CONFIG	0x0c
-#define MX51_ECSPI_CONFIG_SCLKPHA(cs)	(1 << ((cs) +  0))
-#define MX51_ECSPI_CONFIG_SCLKPOL(cs)	(1 << ((cs) +  4))
-#define MX51_ECSPI_CONFIG_SBBCTRL(cs)	(1 << ((cs) +  8))
-#define MX51_ECSPI_CONFIG_SSBPOL(cs)	(1 << ((cs) + 12))
-#define MX51_ECSPI_CONFIG_SCLKCTL(cs)	(1 << ((cs) + 20))
+/**
+ * @brief 设置ECSPI控制器的CONFIG寄存器，这个寄存器有32位，每4位对应一个从机设备。cs是一个参数，表示从机设备的编号，从0到3。
+ * 
+ */
+#define MX51_ECSPI_CONFIG	0x0c				// ECSPI 配置寄存器的地址
+#define MX51_ECSPI_CONFIG_SCLKPHA(cs)	(1 << ((cs) +  0))	// ECSPI 配置寄存器的时钟相位位，占用第 0 到第 3 位。
+								// 这些位用来设置 SPI 的时钟相位，即数据采样发生在时钟的哪个边沿。每个从设备可以有不同的时钟相位设置
+#define MX51_ECSPI_CONFIG_SCLKPOL(cs)	(1 << ((cs) +  4))	// ECSPI 配置寄存器的时钟极性位，占用第 4 到第 7 位。
+								// 这些位用来设置 SPI 的时钟极性，即空闲状态下时钟信号是高电平还是低电平。每个从设备可以有不同的时钟极性设置
+#define MX51_ECSPI_CONFIG_SBBCTRL(cs)	(1 << ((cs) +  8))	// 是否启用SPI时钟的突发传输模式
+#define MX51_ECSPI_CONFIG_SSBPOL(cs)	(1 << ((cs) + 12))	// SPI片选信号的极性
+#define MX51_ECSPI_CONFIG_SCLKCTL(cs)	(1 << ((cs) + 20))	// SPI时钟信号的极性和相位
 
-#define MX51_ECSPI_INT		0x10
-#define MX51_ECSPI_INT_TEEN		(1 <<  0)
-#define MX51_ECSPI_INT_RREN		(1 <<  3)
-#define MX51_ECSPI_INT_TCEN             (1 << 7)
+/**
+ * @brief 用来控制中断的使能和状态
+ * 
+ */
+#define MX51_ECSPI_INT		0x10				// INT寄存器地址
+#define MX51_ECSPI_INT_TEEN		(1 <<  0)		// 发送缓冲区空中断使能
+#define MX51_ECSPI_INT_RREN		(1 <<  3)		// 接收缓冲区满中断使能
+#define MX51_ECSPI_INT_TCEN             (1 << 7)		// 传输完成中断使能
 
-#define MX51_ECSPI_DMA      0x14
-#define MX51_ECSPI_DMA_TX_WML_OFFSET	0
+/**
+ * @brief ECSPI控制器的DMA寄存器
+ * 
+ */
+#define MX51_ECSPI_DMA      0x14				// DMA寄存器地址
+#define MX51_ECSPI_DMA_TX_WML_OFFSET	0			// 发送缓冲区水位线的偏移量
 #define MX51_ECSPI_DMA_TX_WML_MASK	0x3F
-#define MX51_ECSPI_DMA_RX_WML_OFFSET	16
+#define MX51_ECSPI_DMA_RX_WML_OFFSET	16			// 接收缓冲区水位线的偏移量
 #define MX51_ECSPI_DMA_RX_WML_MASK	(0x3F << 16)
-#define MX51_ECSPI_DMA_RXT_WML_OFFSET	24
+#define MX51_ECSPI_DMA_RXT_WML_OFFSET	24			// 接收阈值水位线的偏移量
 #define MX51_ECSPI_DMA_RXT_WML_MASK	(0x3F << 24)
 
-#define MX51_ECSPI_DMA_TEDEN_OFFSET	7
-#define MX51_ECSPI_DMA_RXDEN_OFFSET	23
-#define MX51_ECSPI_DMA_RXTDEN_OFFSET	31
+#define MX51_ECSPI_DMA_TEDEN_OFFSET	7			// 发送缓冲区空DMA使能
+#define MX51_ECSPI_DMA_RXDEN_OFFSET	23			// 接收缓冲区满DMA使能
+#define MX51_ECSPI_DMA_RXTDEN_OFFSET	31			// 接收阈值DMA使能
 
-#define MX51_ECSPI_STAT		0x18
-#define MX51_ECSPI_STAT_RR		(1 <<  3)
+/**
+ * @brief STAT寄存器
+*/
+#define MX51_ECSPI_STAT		0x18				// STAT寄存器的地址
+#define MX51_ECSPI_STAT_RR		(1 <<  3)		// 表示接收缓冲区满中断状态，如果为1，表示接收缓冲区已满；如果为0，表示接收缓冲区未满
 
 /* MX51 eCSPI */
+/**
+ * @brief 计算ECSPI控制器的时钟分频系数
+ * 
+ * @param fin 		输入时钟频率
+ * @param fspi 		SPI时钟频率
+ * @param fres 		用来返回实际的SPI时钟频率
+ * @return unsigned int 时钟分频系数
+ */
 static unsigned int mx51_ecspi_clkdiv(unsigned int fin, unsigned int fspi,
 				      unsigned int *fres)
 {
@@ -263,9 +353,11 @@ static unsigned int mx51_ecspi_clkdiv(unsigned int fin, unsigned int fspi,
 	 */
 	unsigned int pre, post;
 
+	// 判断fspi是否大于fin，如果是，就返回0，表示无法设置
 	if (unlikely(fspi > fin))
 		return 0;
 
+	// 计算post值，它表示后分频器的指数。后分频器是用来将输入时钟除以2^post得到中间时钟。post值要尽量小，使得中间时钟不小于fspi
 	post = fls(fin) - fls(fspi);
 	if (fin > fspi << post)
 		post++;
