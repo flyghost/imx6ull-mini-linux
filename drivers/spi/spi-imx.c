@@ -399,6 +399,11 @@ static void __maybe_unused mx51_ecspi_intctrl(struct spi_imx_data *spi_imx, int 
 	writel(val, spi_imx->base + MX51_ECSPI_INT);
 }
 
+/**
+ * @brief 触发SPI传输
+ * 
+ * @param spi_imx 
+ */
 static void __maybe_unused mx51_ecspi_trigger(struct spi_imx_data *spi_imx)
 {
 	u32 reg = readl(spi_imx->base + MX51_ECSPI_CTRL);
