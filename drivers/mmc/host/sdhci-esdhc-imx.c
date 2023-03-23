@@ -101,6 +101,9 @@
  * but bit28 is used as the INT DMA ERR in fsl eSDHC design.
  * Define this macro DMA error INT for fsl eSDHC
  */
+// eSDHC 和 STD SDHC SPEC 之间存在INT DMA ERR不匹配：
+// STD SPEC中使用Bit25，而在fsl eSDHC设计中保留了该位，但在fsl eSDHC设计中，Bit28用作INT DMA ERR。
+// 为fsl eSDHC定义此宏DMA错误INT。相当于将错误bit换个位置
 #define ESDHC_INT_VENDOR_SPEC_DMA_ERR	(1 << 28)
 
 /*
@@ -124,13 +127,13 @@
  * The flag tells that the ESDHC controller is an USDHC block that is
  * integrated on the i.MX6 series.
  */
-#define ESDHC_FLAG_USDHC		BIT(3)
+#define ESDHC_FLAG_USDHC		BIT(3)		// 用于指示SDHCI主机是否为USDHC
 /* The IP supports manual tuning process */
-#define ESDHC_FLAG_MAN_TUNING		BIT(4)
+#define ESDHC_FLAG_MAN_TUNING		BIT(4)		// 是否支持手动调谐过程
 /* The IP supports standard tuning process */
-#define ESDHC_FLAG_STD_TUNING		BIT(5)
+#define ESDHC_FLAG_STD_TUNING		BIT(5)		// 是否支持标准调谐过程
 /* The IP has SDHCI_CAPABILITIES_1 register */
-#define ESDHC_FLAG_HAVE_CAP1		BIT(6)
+#define ESDHC_FLAG_HAVE_CAP1		BIT(6)		// 是否存在 SDHCI_CAPABILITIES_1 寄存器
 /*
  * The IP has errata ERR004536
  * uSDHC: ADMA Length Mismatch Error occurs if the AHB read access is slow,
@@ -305,12 +308,20 @@ static inline void esdhc_clrset_le(struct sdhci_host *host, u32 mask, u32 val, i
 	writel(((readl(base) & ~(mask << shift)) | (val << shift)), base);
 }
 
+/**
+ * @brief 从寄存器中读取32位值
+ * 
+ * @param host 	SDHCI主机
+ * @param reg 	需要读取的寄存器
+ * @return u32 
+ */
 static u32 esdhc_readl_le(struct sdhci_host *host, int reg)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct pltfm_imx_data *imx_data = pltfm_host->priv;
 	u32 val = readl(host->ioaddr + reg);
 
+	// 如果读取的是 PRESEND 状态寄存器，需要对该值进行移位操作
 	if (unlikely(reg == SDHCI_PRESENT_STATE)) {
 		u32 fsl_prss = val;
 		/* save the least 20 bits */
@@ -362,9 +373,11 @@ static u32 esdhc_readl_le(struct sdhci_host *host, int reg)
 		val |= 0xFF << SDHCI_MAX_CURRENT_180_SHIFT;
 	}
 
+	// 读取中断状态寄存器
 	if (unlikely(reg == SDHCI_INT_STATUS)) {
-		if (val & ESDHC_INT_VENDOR_SPEC_DMA_ERR) {
-			val &= ~ESDHC_INT_VENDOR_SPEC_DMA_ERR;
+		// 标准SDHC协议中，使用bit25来标记DMA错误中断，而控制器使用bit28
+		if (val & ESDHC_INT_VENDOR_SPEC_DMA_ERR) {		// 如果bit28有置位
+			val &= ~ESDHC_INT_VENDOR_SPEC_DMA_ERR;		// 则清除该位，并在bit25上置位
 			val |= SDHCI_INT_ADMA_ERROR;
 		}
 
