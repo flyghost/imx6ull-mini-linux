@@ -99,8 +99,14 @@ struct mmc_host_ops {
 	 * To undo a call made to pre_req(), call post_req() with
 	 * a nonzero err condition.
 	 */
+	// 用于支持请求的双缓冲，即在一个请求处于活动状态时准备另一个请求。
+	// pre_req()必须始终后跟post_req()。
+	// 要撤消对pre_req()的调用，请使用具有非零err条件的post_req()
 	void	(*post_req)(struct mmc_host *host, struct mmc_request *req,
 			    int err);
+	// 用于支持请求的双缓冲，即在一个请求处于活动状态时准备另一个请求。
+	// pre_req()必须始终后跟post_req()。
+	// 要撤消对pre_req()的调用，请使用具有非零err条件的post_req()
 	void	(*pre_req)(struct mmc_host *host, struct mmc_request *req,
 			   bool is_first_req);
 	void	(*request)(struct mmc_host *host, struct mmc_request *req);
@@ -124,22 +130,22 @@ struct mmc_host_ops {
 	 *   -ENOSYS when not supported (equal to NULL callback)
 	 *   or a negative errno value when something bad happened
 	 */
-	void	(*set_ios)(struct mmc_host *host, struct mmc_ios *ios);
-	int	(*get_ro)(struct mmc_host *host);
-	int	(*get_cd)(struct mmc_host *host);
+	void	(*set_ios)(struct mmc_host *host, struct mmc_ios *ios);	// 用于设置MMC主机的I/O设置
+	int	(*get_ro)(struct mmc_host *host);			// 用于获取MMC主机的只读状态
+	int	(*get_cd)(struct mmc_host *host);			// 检测卡是否存在
 
-	void	(*enable_sdio_irq)(struct mmc_host *host, int enable);
+	void	(*enable_sdio_irq)(struct mmc_host *host, int enable);	// 用于启用或禁用MMC主机的SDIO中断
 
 	/* optional callback for HC quirks */
-	void	(*init_card)(struct mmc_host *host, struct mmc_card *card);
+	void	(*init_card)(struct mmc_host *host, struct mmc_card *card);	// 用于初始化MMC卡
 
-	int	(*start_signal_voltage_switch)(struct mmc_host *host, struct mmc_ios *ios);
+	int	(*start_signal_voltage_switch)(struct mmc_host *host, struct mmc_ios *ios);	// 用于启动信号电压切换
 
 	/* Check if the card is pulling dat[0:3] low */
-	int	(*card_busy)(struct mmc_host *host);
+	int	(*card_busy)(struct mmc_host *host);		// 用于检查卡是否正在拉低dat[0:3]
 
 	/* The tuning command opcode value is different for SD and eMMC cards */
-	int	(*execute_tuning)(struct mmc_host *host, u32 opcode);
+	int	(*execute_tuning)(struct mmc_host *host, u32 opcode);	// 用于执行调谐命令
 
 	/* Prepare HS400 target operating frequency depending host driver */
 	int	(*prepare_hs400_tuning)(struct mmc_host *host, struct mmc_ios *ios);
@@ -160,21 +166,27 @@ struct mmc_host_ops {
 struct mmc_card;
 struct device;
 
+/**
+ * @brief 异步请求
+ * 
+ */
 struct mmc_async_req {
 	/* active mmc request */
+	// 指向当前活动的MMC请求的指针
 	struct mmc_request	*mrq;
 	/*
 	 * Check error status of completed mmc request.
 	 * Returns 0 if success otherwise non zero.
 	 */
+	// 用于检查已完成的MMC请求的错误状态。如果成功则返回0，否则返回非零值。
 	int (*err_check) (struct mmc_card *, struct mmc_async_req *);
 };
 
 /**
  * struct mmc_slot - MMC slot functions
  *
- * @cd_irq:		MMC/SD-card slot hotplug detection IRQ or -EINVAL
- * @handler_priv:	MMC/SD-card slot context
+ * @cd_irq:		MMC/SD-card slot hotplug detection IRQ or -EINVAL   	表示MMC卡插槽的卡检测中断号
+ * @handler_priv:	MMC/SD-card slot context				指向MMC卡插槽的私有数据
  *
  * Some MMC/SD host controllers implement slot-functions like card and
  * write-protect detection natively. However, a large number of controllers
@@ -195,38 +207,38 @@ struct mmc_slot {
  * @lock		lock to protect data fields
  */
 struct mmc_context_info {
-	bool			is_done_rcv;
-	bool			is_new_req;
-	bool			is_waiting_last_req;
-	wait_queue_head_t	wait;
-	spinlock_t		lock;
+	bool			is_done_rcv;		// 是否已经接收到完成信号
+	bool			is_new_req;		// 是否有新的请求
+	bool			is_waiting_last_req;	// 是否正在等待上一个请求
+	wait_queue_head_t	wait;			// 等待队列头
+	spinlock_t		lock;			// 自旋锁
 };
 
 struct regulator;
 struct mmc_pwrseq;
 
 struct mmc_supply {
-	struct regulator *vmmc;		/* Card power supply */
-	struct regulator *vqmmc;	/* Optional Vccq supply */
+	struct regulator *vmmc;		/* Card power supply */		// 卡电源
+	struct regulator *vqmmc;	/* Optional Vccq supply */	// 可选的VCCQ电源
 };
 
 struct mmc_host {
 	struct device		*parent;
 	struct device		class_dev;
-	int			index;
-	const struct mmc_host_ops *ops;
-	struct mmc_pwrseq	*pwrseq;
-	unsigned int		f_min;
-	unsigned int		f_max;
-	unsigned int		f_init;
+	int			index;		// 设备索引
+	const struct mmc_host_ops *ops;		// mmc设备的操作函数
+	struct mmc_pwrseq	*pwrseq;	// 电源序列
+	unsigned int		f_min;		// 设备的最小频率
+	unsigned int		f_max;		// 设备的最大频率
+	unsigned int		f_init;		// 初始化频率
 	u32			ocr_avail;
 	u32			ocr_avail_sdio;	/* SDIO-specific OCR */
 	u32			ocr_avail_sd;	/* SD-specific OCR */
 	u32			ocr_avail_mmc;	/* MMC-specific OCR */
-	struct notifier_block	pm_notify;
-	u32			max_current_330;
-	u32			max_current_300;
-	u32			max_current_180;
+	struct notifier_block	pm_notify;	// 电源管理通知
+	u32			max_current_330;// 电流限制最大为3.3V
+	u32			max_current_300;// 电流限制最大为3V
+	u32			max_current_180;// 电流限制最大为1.8V
 
 #define MMC_VDD_165_195		0x00000080	/* VDD voltage 1.65 - 1.95 */
 #define MMC_VDD_20_21		0x00000100	/* VDD voltage 2.0 ~ 2.1 */
