@@ -21,56 +21,67 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/pm.h>
 
+/**
+ * @brief MMC管脚相关的信息
+ * 
+ */
 struct mmc_ios {
 	unsigned int	clock;			/* clock rate */
-	unsigned short	vdd;
+	unsigned short	vdd;			// 选择的电压范围的位数
 
 /* vdd stores the bit number of the selected voltage range from below. */
 
+// 命令输出模式
 	unsigned char	bus_mode;		/* command output mode */
 
-#define MMC_BUSMODE_OPENDRAIN	1
-#define MMC_BUSMODE_PUSHPULL	2
+#define MMC_BUSMODE_OPENDRAIN	1		// 开漏模式
+#define MMC_BUSMODE_PUSHPULL	2		// 上拉模式
 
+// SPI 片选
 	unsigned char	chip_select;		/* SPI chip select */
 
-#define MMC_CS_DONTCARE		0
-#define MMC_CS_HIGH		1
-#define MMC_CS_LOW		2
+#define MMC_CS_DONTCARE		0		// do not care
+#define MMC_CS_HIGH		1		// 片选拉高
+#define MMC_CS_LOW		2		// 片选拉低
 
+// 电源供应模式
 	unsigned char	power_mode;		/* power supply mode */
 
-#define MMC_POWER_OFF		0
-#define MMC_POWER_UP		1
-#define MMC_POWER_ON		2
-#define MMC_POWER_UNDEFINED	3
+#define MMC_POWER_OFF		0		// 电源关闭
+#define MMC_POWER_UP		1		// 电源上升
+#define MMC_POWER_ON		2		// 电源开启
+#define MMC_POWER_UNDEFINED	3		// 电源未定义
 
+// 数据总线宽度
 	unsigned char	bus_width;		/* data bus width */
 
-#define MMC_BUS_WIDTH_1		0
-#define MMC_BUS_WIDTH_4		2
-#define MMC_BUS_WIDTH_8		3
+#define MMC_BUS_WIDTH_1		0		// 1bit 数据总线宽度
+#define MMC_BUS_WIDTH_4		2		// 4bit 数据总线宽度
+#define MMC_BUS_WIDTH_8		3		// 8bit 数据总线宽度
 
+// 使用的时序规范
 	unsigned char	timing;			/* timing specification used */
 
-#define MMC_TIMING_LEGACY	0
-#define MMC_TIMING_MMC_HS	1
-#define MMC_TIMING_SD_HS	2
-#define MMC_TIMING_UHS_SDR12	3
-#define MMC_TIMING_UHS_SDR25	4
-#define MMC_TIMING_UHS_SDR50	5
-#define MMC_TIMING_UHS_SDR104	6
-#define MMC_TIMING_UHS_DDR50	7
-#define MMC_TIMING_MMC_DDR52	8
-#define MMC_TIMING_MMC_HS200	9
-#define MMC_TIMING_MMC_HS400	10
+#define MMC_TIMING_LEGACY	0		// 传统时序
+#define MMC_TIMING_MMC_HS	1		// MMC high speed 时序
+#define MMC_TIMING_SD_HS	2		// SD high speed 时序
+#define MMC_TIMING_UHS_SDR12	3		// UHS SDR12 时序
+#define MMC_TIMING_UHS_SDR25	4		// UHS SDR25 时序
+#define MMC_TIMING_UHS_SDR50	5		// UHS SDR50 时序
+#define MMC_TIMING_UHS_SDR104	6		// UHS SDR104 时序
+#define MMC_TIMING_UHS_DDR50	7		// UHS DDR50 时序
+#define MMC_TIMING_MMC_DDR52	8		// MMC DDR52 时序
+#define MMC_TIMING_MMC_HS200	9		// MMC HS200 时序
+#define MMC_TIMING_MMC_HS400	10		// MMC HS400 时序
 
+// 信号电压
 	unsigned char	signal_voltage;		/* signalling voltage (1.8V or 3.3V) */
 
-#define MMC_SIGNAL_VOLTAGE_330	0
-#define MMC_SIGNAL_VOLTAGE_180	1
-#define MMC_SIGNAL_VOLTAGE_120	2
+#define MMC_SIGNAL_VOLTAGE_330	0		// 3.3V信号电压
+#define MMC_SIGNAL_VOLTAGE_180	1		// 1.8V信号电压
+#define MMC_SIGNAL_VOLTAGE_120	2		// 1.2V信号电压
 
+// 驱动类型
 	unsigned char	drv_type;		/* driver type (A, B, C, D) */
 
 #define MMC_SET_DRIVER_TYPE_B	0
