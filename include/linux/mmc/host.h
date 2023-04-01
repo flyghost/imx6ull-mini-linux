@@ -523,12 +523,24 @@ static inline unsigned int mmc_host_clk_rate(struct mmc_host *host)
 }
 #endif
 
+/**
+ * @brief 判断mmc/sd卡时序是否是high speed
+ * 
+ * @param card 
+ * @return int 1：是高速卡   0：不是高速卡
+ */
 static inline int mmc_card_hs(struct mmc_card *card)
 {
 	return card->host->ios.timing == MMC_TIMING_SD_HS ||
 		card->host->ios.timing == MMC_TIMING_MMC_HS;
 }
 
+/**
+ * @brief 判断SD卡是否支持UHS模式
+ * 
+ * @param card mmc卡结构体
+ * @return int 1：支持    0：不支持
+ */
 static inline int mmc_card_uhs(struct mmc_card *card)
 {
 	return card->host->ios.timing >= MMC_TIMING_UHS_SDR12 &&

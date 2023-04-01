@@ -208,18 +208,20 @@ static struct bus_type mmc_bus_type = {
 	.pm		= &mmc_bus_pm_ops,
 };
 
+// 注册mmc总线
 int mmc_register_bus(void)
 {
 	return bus_register(&mmc_bus_type);
 }
 
+// 取消注册mmc总线
 void mmc_unregister_bus(void)
 {
 	bus_unregister(&mmc_bus_type);
 }
 
 /**
- *	mmc_register_driver - register a media driver
+ *	mmc_register_driver - register a media driver  注册媒体驱动程序
  *	@drv: MMC media driver
  */
 int mmc_register_driver(struct mmc_driver *drv)
@@ -231,7 +233,7 @@ int mmc_register_driver(struct mmc_driver *drv)
 EXPORT_SYMBOL(mmc_register_driver);
 
 /**
- *	mmc_unregister_driver - unregister a media driver
+ *	mmc_unregister_driver - unregister a media driver 取消注册媒体驱动程序
  *	@drv: MMC media driver
  */
 void mmc_unregister_driver(struct mmc_driver *drv)
@@ -256,16 +258,20 @@ static void mmc_release_card(struct device *dev)
 /*
  * Allocate and initialise a new MMC card structure.
  */
+// 分配并初始化一个新的MMC卡结构体
 struct mmc_card *mmc_alloc_card(struct mmc_host *host, struct device_type *type)
 {
 	struct mmc_card *card;
 
+	// 分配mmc卡结构体
 	card = kzalloc(sizeof(struct mmc_card), GFP_KERNEL);
 	if (!card)
 		return ERR_PTR(-ENOMEM);
 
+	// 将mmc host信息保存到mmc卡结构体中
 	card->host = host;
 
+	// 初始化mmc device结构体
 	device_initialize(&card->dev);
 
 	card->dev.parent = mmc_classdev(host);
@@ -279,11 +285,12 @@ struct mmc_card *mmc_alloc_card(struct mmc_host *host, struct device_type *type)
 /*
  * Register a new MMC card with the driver model.
  */
+// 用驱动程序模型注册一个新的MMC卡
 int mmc_add_card(struct mmc_card *card)
 {
 	int ret;
 	const char *type;
-	const char *uhs_bus_speed_mode = "";
+	const char *uhs_bus_speed_mode = "";		// 当前卡的总线速度字符串
 	static const char *const uhs_speeds[] = {
 		[UHS_SDR12_BUS_SPEED] = "SDR12 ",
 		[UHS_SDR25_BUS_SPEED] = "SDR25 ",
@@ -295,14 +302,26 @@ int mmc_add_card(struct mmc_card *card)
 
 	dev_set_name(&card->dev, "%s:%04x", mmc_hostname(card->host), card->rca);
 
+	/**
+	 * @brief 判断卡类型
+	 * 
+	 * 1、MMC卡
+	 * 2、SD卡
+	 *    ------SD卡
+	 *    ------SDXC
+	 *    ------SDHC
+	 * 3、SDIO设备
+	 * 4、SD-Combo
+	 * 
+	 */
 	switch (card->type) {
 	case MMC_TYPE_MMC:
 		type = "MMC";
 		break;
 	case MMC_TYPE_SD:
 		type = "SD";
-		if (mmc_card_blockaddr(card)) {
-			if (mmc_card_ext_capacity(card))
+		if (mmc_card_blockaddr(card)) {			// 是否是块命令
+			if (mmc_card_ext_capacity(card))	// 判断是否是SDXC卡
 				type = "SDXC";
 			else
 				type = "SDHC";
@@ -321,23 +340,24 @@ int mmc_add_card(struct mmc_card *card)
 		break;
 	}
 
-	if (mmc_card_uhs(card) &&
-		(card->sd_bus_speed < ARRAY_SIZE(uhs_speeds)))
-		uhs_bus_speed_mode = uhs_speeds[card->sd_bus_speed];
+	if (mmc_card_uhs(card) &&					// 是否支持UHS卡
+		(card->sd_bus_speed < ARRAY_SIZE(uhs_speeds)))		// 同时SD卡速度等级在HUS规定的等级之内
+		uhs_bus_speed_mode = uhs_speeds[card->sd_bus_speed];	// 如果满足上述条件，则获取当前总线速度字符串
 
+	// 当前HOST是SPI接口
 	if (mmc_host_is_spi(card->host)) {
 		pr_info("%s: new %s%s%s card on SPI\n",
-			mmc_hostname(card->host),
-			mmc_card_hs(card) ? "high speed " : "",
+			mmc_hostname(card->host),			// Host名字
+			mmc_card_hs(card) ? "high speed " : "",		// 高速卡
 			mmc_card_ddr52(card) ? "DDR " : "",
 			type);
 	} else {
 		pr_info("%s: new %s%s%s%s%s card at address %04x\n",
-			mmc_hostname(card->host),
-			mmc_card_uhs(card) ? "ultra high speed " :
-			(mmc_card_hs(card) ? "high speed " : ""),
-			mmc_card_hs400(card) ? "HS400 " :
-			(mmc_card_hs200(card) ? "HS200 " : ""),
+			mmc_hostname(card->host),			// Host名字
+			mmc_card_uhs(card) ? "ultra high speed " :	// 是否支持UHS时序
+			(mmc_card_hs(card) ? "high speed " : ""),	// 如果支持HUS，则打印当前支持的UHS时序等级
+			mmc_card_hs400(card) ? "HS400 " :		// 是否支持MMC HS400、MMC HS200、MMC DDR52时序等级
+			(mmc_card_hs200(card) ? "HS200 " : ""),		// 如果支持等打印
 			mmc_card_ddr52(card) ? "DDR " : "",
 			uhs_bus_speed_mode, type, card->rca);
 	}
@@ -345,15 +365,15 @@ int mmc_add_card(struct mmc_card *card)
 #ifdef CONFIG_DEBUG_FS
 	mmc_add_card_debugfs(card);
 #endif
-	mmc_init_context_info(card->host);
+	mmc_init_context_info(card->host);				// 初始化MMC HOST的上下文信息
 
-	card->dev.of_node = mmc_of_find_child_device(card->host, 0);
+	card->dev.of_node = mmc_of_find_child_device(card->host, 0);	// 查找MMC主机的子设备节点
 
 	ret = device_add(&card->dev);
 	if (ret)
 		return ret;
 
-	mmc_card_set_present(card);
+	mmc_card_set_present(card);	// 设置当前卡在线
 
 	return 0;
 }
@@ -362,6 +382,7 @@ int mmc_add_card(struct mmc_card *card)
  * Unregister a new MMC card with the driver model, and
  * (eventually) free it.
  */
+// 删除卡
 void mmc_remove_card(struct mmc_card *card)
 {
 #ifdef CONFIG_DEBUG_FS

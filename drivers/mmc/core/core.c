@@ -70,6 +70,13 @@ module_param(use_spi_crc, bool, 0);
 /*
  * Internal function. Schedule delayed work in the MMC work queue.
  */
+/**
+ * @brief 调度一个延迟工作，将一个而延迟工作加入到工作队列中，等待一定的事件后再执行
+ * 
+ * @param work 	延迟工作
+ * @param delay 延迟的时间
+ * @return int 
+ */
 static int mmc_schedule_delayed_work(struct delayed_work *work,
 				     unsigned long delay)
 {
@@ -79,6 +86,7 @@ static int mmc_schedule_delayed_work(struct delayed_work *work,
 /*
  * Internal function. Flush all scheduled work from the MMC work queue.
  */
+// 刷新工作队列中的所有任务，等待执行完
 static void mmc_flush_scheduled_work(void)
 {
 	flush_workqueue(workqueue);
@@ -128,6 +136,18 @@ static inline void mmc_should_fail_request(struct mmc_host *host,
  *
  *	MMC drivers should call this function when they have completed
  *	their processing of a request.
+ */
+
+/**
+ * @brief 是用于完成MMC请求的处理的。
+ * 
+ * 这个函数会被MMC驱动程序调用，当它们完成对请求的处理时，会调用这个函数
+ * 
+ * 主要用于检查命令是否有错误，如果有错误，则会在CRC错误时标记需要重新调整。
+ * 如果命令有重试次数并且MMC主机是SPI，则会在命令响应中检查是否存在非法命令。
+ * 
+ * @param host 
+ * @param mrq 
  */
 void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 {
@@ -1323,6 +1343,14 @@ static int mmc_of_get_func_num(struct device_node *node)
 	return reg;
 }
 
+/**
+ * @brief 用于查找MMC主机的子设备节点
+ * 
+ * @param host 
+ * @param func_num 
+ * @return struct device_node* 
+ * 如果找到了，则返回该节点，否则返回NULL
+ */
 struct device_node *mmc_of_find_child_device(struct mmc_host *host,
 		unsigned func_num)
 {
@@ -2813,6 +2841,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
  * request mechanism, used by mmc core, host driver and mmc requests
  * supplier.
  */
+// 初始化MMC host的上下文信息
 void mmc_init_context_info(struct mmc_host *host)
 {
 	spin_lock_init(&host->context_info.lock);
