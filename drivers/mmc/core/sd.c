@@ -53,6 +53,7 @@ static const unsigned int sd_au_size[] = {
 	SZ_16M / 512,	(SZ_16M + SZ_8M) / 512,	SZ_32M / 512,	SZ_64M / 512,
 };
 
+// 从resp变量中，提取从start位开始的size位，并将其作为一个无符号32位整数返回
 #define UNSTUFF_BITS(resp,start,size)					\
 	({								\
 		const int __size = size;				\
@@ -69,6 +70,12 @@ static const unsigned int sd_au_size[] = {
 
 /*
  * Given the decoded CSD structure, decode the raw CID to our CID structure.
+ */
+
+/**
+ * @brief 根据原始的CID，解码成我们自己的CID结构体
+ * 
+ * @param card mmc卡结构体
  */
 void mmc_decode_cid(struct mmc_card *card)
 {
@@ -98,6 +105,13 @@ void mmc_decode_cid(struct mmc_card *card)
 
 /*
  * Given a 128-bit response, decode to our card CSD structure.
+ */
+
+/**
+ * @brief 根据给定的128bit的响应，解码赋值给卡的CSD结构体
+ * 
+ * @param card 
+ * @return int 成功则返回0
  */
 static int mmc_decode_csd(struct mmc_card *card)
 {
@@ -187,6 +201,13 @@ static int mmc_decode_csd(struct mmc_card *card)
 /*
  * Given a 64-bit response, decode to our card SCR structure.
  */
+
+/**
+ * @brief 解码 SD 卡的 SCR（SD 卡配置寄存器）
+ * 
+ * @param card 
+ * @return int 
+ */
 static int mmc_decode_scr(struct mmc_card *card)
 {
 	struct sd_scr *scr = &card->scr;
@@ -196,26 +217,26 @@ static int mmc_decode_scr(struct mmc_card *card)
 	resp[3] = card->raw_scr[1];
 	resp[2] = card->raw_scr[0];
 
-	scr_struct = UNSTUFF_BITS(resp, 60, 4);
+	scr_struct = UNSTUFF_BITS(resp, 60, 4);				// 表示 SCR 的结构版本号
 	if (scr_struct != 0) {
 		pr_err("%s: unrecognised SCR structure version %d\n",
 			mmc_hostname(card->host), scr_struct);
 		return -EINVAL;
 	}
 
-	scr->sda_vsn = UNSTUFF_BITS(resp, 56, 4);
-	scr->bus_widths = UNSTUFF_BITS(resp, 48, 4);
+	scr->sda_vsn = UNSTUFF_BITS(resp, 56, 4);			// SD卡的规范版本号
+	scr->bus_widths = UNSTUFF_BITS(resp, 48, 4);			// SCR 的总线宽度
 	if (scr->sda_vsn == SCR_SPEC_VER_2)
 		/* Check if Physical Layer Spec v3.0 is supported */
-		scr->sda_spec3 = UNSTUFF_BITS(resp, 47, 1);
+		scr->sda_spec3 = UNSTUFF_BITS(resp, 47, 1);		// SDA 规范版本 3.0 支持情况
 
-	if (UNSTUFF_BITS(resp, 55, 1))
+	if (UNSTUFF_BITS(resp, 55, 1))					// 擦除字节值
 		card->erased_byte = 0xFF;
 	else
 		card->erased_byte = 0x0;
 
 	if (scr->sda_spec3)
-		scr->cmds = UNSTUFF_BITS(resp, 32, 2);
+		scr->cmds = UNSTUFF_BITS(resp, 32, 2);			// 命令支持情况
 	return 0;
 }
 
