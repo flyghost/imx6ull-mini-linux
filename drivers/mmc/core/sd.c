@@ -28,13 +28,16 @@
 #include "sd_ops.h"
 
 /**
- * @brief 最大传输速率
+ * @brief 最大传输速率, CSD寄存器的bit[103:96]
+ * 
+ * 对于标准的SD卡, 这个区域的值应该总是为00110010b=0x32，这个等于25MHz，是强制的SD卡最大操作频率。
+ * 对于高速卡来说，这个值应该是01011010=0x5a，这个值代表50MHz
+ * 当时序通过CMD6和CMD0命令回到默认的时候，这个值会重新设置为0x32
  * 
  * 计算公式:	m = UNSTUFF_BITS(resp, 99, 4);
  * 		e = UNSTUFF_BITS(resp, 96, 3);
  * 		csd->max_dtr = tran_exp[e] * tran_mant[m];
 
- * 这里
  * 
  * tran_exp :传输速率单元(对应的值做了除以10的处理,原因见下面的注释)
  * 		0: 100K bit/s
@@ -43,16 +46,16 @@
  * 		3: 100M bit/s
  * 
  * tran_mant :时间值(由于将浮点数扩大十倍转为整形,所以对应的tran_exp对应的传输速率单元需要除以10)
- * 		0:保留
- * 		1:1.0
- * 		2: 1.2
- * 		3: 1.3
- * 		4: 1.5
- * 		5: 2.0
- * 		6: 2.5
- * 		7: 3.0
- * 		8: 3.5
- * 		9: 4.0
+ * 		0:  保留
+ * 		1:  1.0
+ * 		2:  1.2
+ * 		3:  1.3
+ * 		4:  1.5
+ * 		5:  2.0
+ * 		6:  2.5
+ * 		7:  3.0
+ * 		8:  3.5
+ * 		9:  4.0
  * 		10: 4.5
  * 		11: 5.0
  * 		12: 5.5
@@ -60,13 +63,15 @@
  * 		14: 7.0
  * 		15: 8.0
  * 
+ * 举例：0x32：e=2,m=6
+ *             1000000 * 25 = 25Mhz
+ * 
  */
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
 };
 
-// 最大传输速率:传输速率单元
 static const unsigned char tran_mant[] = {
 	0,	10,	12,	13,	15,	20,	25,	30,
 	35,	40,	45,	50,	55,	60,	70,	80,
@@ -169,7 +174,7 @@ static int mmc_decode_csd(struct mmc_card *card)
 		csd->tacc_ns	 = (tacc_exp[e] * tacc_mant[m] + 9) / 10;
 		csd->tacc_clks	 = UNSTUFF_BITS(resp, 104, 8) * 100;
 
-		// 计算最大传输速度
+		// 计算最大传输速度，CSD寄存器的bit[193:96]，该区域应该默认为0x32
 		m = UNSTUFF_BITS(resp, 99, 4);					// 时间值
 		e = UNSTUFF_BITS(resp, 96, 3);					// 传输速率单元
 		csd->max_dtr	  = tran_exp[e] * tran_mant[m];
