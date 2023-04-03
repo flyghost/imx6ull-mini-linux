@@ -27,20 +27,59 @@
 #include "sd.h"
 #include "sd_ops.h"
 
+/**
+ * @brief 最大传输速率
+ * 
+ * 计算公式:	m = UNSTUFF_BITS(resp, 99, 4);
+ * 		e = UNSTUFF_BITS(resp, 96, 3);
+ * 		csd->max_dtr = tran_exp[e] * tran_mant[m];
+
+ * 这里
+ * 
+ * tran_exp ：传输速率单元（对应的值做了除以10的处理，原因见下面的注释）
+ * 		0: 100K bit/s
+ * 		1: 1M   bit/s
+ * 		2: 10M  bit/s
+ * 		3: 100M bit/s
+ * 
+ * tran_mant ：时间值(由于将浮点数扩大十倍转为整形，所以对应的tran_exp对应的传输速率单元需要除以10)
+ * 		0：保留
+ * 		1：1.0
+ * 		2: 1.2
+ * 		3: 1.3
+ * 		4: 1.5
+ * 		5: 2.0
+ * 		6: 2.5
+ * 		7: 3.0
+ * 		8: 3.5
+ * 		9: 4.0
+ * 		10: 4.5
+ * 		11: 5.0
+ * 		12: 5.5
+ * 		13: 6.0
+ * 		14: 7.0
+ * 		15: 8.0
+ * 
+ */
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
 };
 
+// 最大传输速率：传输速率单元
 static const unsigned char tran_mant[] = {
 	0,	10,	12,	13,	15,	20,	25,	30,
 	35,	40,	45,	50,	55,	60,	70,	80,
 };
 
+// 用于计算SD卡的访问时间TAAC
+// TAAC 是一个 8 位字段，其中高三位表示时间单位的指数，低三位表示时间单位的尾数
+// tacc_exp 数组用于查找时间单位的指数
 static const unsigned int tacc_exp[] = {
 	1,	10,	100,	1000,	10000,	100000,	1000000, 10000000,
 };
 
+// tacc_mant 数组用于查找时间单位的尾数
 static const unsigned int tacc_mant[] = {
 	0,	10,	12,	13,	15,	20,	25,	30,
 	35,	40,	45,	50,	55,	60,	70,	80,
@@ -87,18 +126,18 @@ void mmc_decode_cid(struct mmc_card *card)
 	 * SD doesn't currently have a version field so we will
 	 * have to assume we can parse this.
 	 */
-	card->cid.manfid		= UNSTUFF_BITS(resp, 120, 8);
-	card->cid.oemid			= UNSTUFF_BITS(resp, 104, 16);
-	card->cid.prod_name[0]		= UNSTUFF_BITS(resp, 96, 8);
+	card->cid.manfid		= UNSTUFF_BITS(resp, 120, 8);		// 制造商ID
+	card->cid.oemid			= UNSTUFF_BITS(resp, 104, 16);		// OEM/应用ID
+	card->cid.prod_name[0]		= UNSTUFF_BITS(resp, 96, 8);		// 产品名称
 	card->cid.prod_name[1]		= UNSTUFF_BITS(resp, 88, 8);
 	card->cid.prod_name[2]		= UNSTUFF_BITS(resp, 80, 8);
 	card->cid.prod_name[3]		= UNSTUFF_BITS(resp, 72, 8);
 	card->cid.prod_name[4]		= UNSTUFF_BITS(resp, 64, 8);
-	card->cid.hwrev			= UNSTUFF_BITS(resp, 60, 4);
-	card->cid.fwrev			= UNSTUFF_BITS(resp, 56, 4);
-	card->cid.serial		= UNSTUFF_BITS(resp, 24, 32);
-	card->cid.year			= UNSTUFF_BITS(resp, 12, 8);
-	card->cid.month			= UNSTUFF_BITS(resp, 8, 4);
+	card->cid.hwrev			= UNSTUFF_BITS(resp, 60, 4);		// 产品版本号：硬件版本号
+	card->cid.fwrev			= UNSTUFF_BITS(resp, 56, 4);		// 产品版本号：固件版本号
+	card->cid.serial		= UNSTUFF_BITS(resp, 24, 32);		// 产品序列号
+	card->cid.year			= UNSTUFF_BITS(resp, 12, 8);		// 生产日期：年
+	card->cid.month			= UNSTUFF_BITS(resp, 8, 4);		// 生产日期：月
 
 	card->cid.year += 2000; /* SD cards year offset */
 }
@@ -119,17 +158,20 @@ static int mmc_decode_csd(struct mmc_card *card)
 	unsigned int e, m, csd_struct;
 	u32 *resp = card->raw_csd;
 
-	csd_struct = UNSTUFF_BITS(resp, 126, 2);
+	csd_struct = UNSTUFF_BITS(resp, 126, 2);				// csd结构体
 
 	switch (csd_struct) {
 	case 0:
-		m = UNSTUFF_BITS(resp, 115, 4);
-		e = UNSTUFF_BITS(resp, 112, 3);
+		// 计算数据读访问时间TAAC
+		// BITS[112, 119]固定为0xE，代表1ms
+		m = UNSTUFF_BITS(resp, 115, 4);					// 指数
+		e = UNSTUFF_BITS(resp, 112, 3);					// 尾数
 		csd->tacc_ns	 = (tacc_exp[e] * tacc_mant[m] + 9) / 10;
 		csd->tacc_clks	 = UNSTUFF_BITS(resp, 104, 8) * 100;
 
-		m = UNSTUFF_BITS(resp, 99, 4);
-		e = UNSTUFF_BITS(resp, 96, 3);
+		// 计算最大传输速度
+		m = UNSTUFF_BITS(resp, 99, 4);					// 时间值
+		e = UNSTUFF_BITS(resp, 96, 3);					// 传输速率单元
 		csd->max_dtr	  = tran_exp[e] * tran_mant[m];
 		csd->cmdclass	  = UNSTUFF_BITS(resp, 84, 12);
 
