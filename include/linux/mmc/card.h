@@ -14,36 +14,38 @@
 #include <linux/mmc/core.h>
 #include <linux/mod_devicetable.h>
 
+// Card Identification (CID) 寄存器的信息
 struct mmc_cid {
-	unsigned int		manfid;
-	char			prod_name[8];
-	unsigned char		prv;
-	unsigned int		serial;
-	unsigned short		oemid;
-	unsigned short		year;
-	unsigned char		hwrev;
-	unsigned char		fwrev;
-	unsigned char		month;
+	unsigned int		manfid;			// Manufacturer ID，制造商ID
+	char			prod_name[8];		// Product name，产品名称
+	unsigned char		prv;			// Product revision，产品版本
+	unsigned int		serial;			// Product serial number，产品序列号
+	unsigned short		oemid;			// OEM/Application ID
+	unsigned short		year;			// Manufacturing year，制造年份
+	unsigned char		hwrev;			// Hardware revision，硬件版本
+	unsigned char		fwrev;			// Firmware revision，固件版本
+	unsigned char		month;			// Manufacturing month，制造月份
 };
 
+// CSD 寄存器包含了 MMC 卡的容量、传输速度等信息
 struct mmc_csd {
-	unsigned char		structure;
-	unsigned char		mmca_vsn;
-	unsigned short		cmdclass;
-	unsigned short		tacc_clks;
-	unsigned int		tacc_ns;
-	unsigned int		c_size;
-	unsigned int		r2w_factor;
-	unsigned int		max_dtr;
-	unsigned int		erase_size;		/* In sectors */
-	unsigned int		read_blkbits;
-	unsigned int		write_blkbits;
-	unsigned int		capacity;
-	unsigned int		read_partial:1,
-				read_misalign:1,
-				write_partial:1,
-				write_misalign:1,
-				dsr_imp:1;
+	unsigned char		structure;		// CSD 结构版本
+	unsigned char		mmca_vsn;		// MMC 版本
+	unsigned short		cmdclass;		// 命令类
+	unsigned short		tacc_clks;		// 数据读取时间
+	unsigned int		tacc_ns;		// 数据读取时间（纳秒）
+	unsigned int		c_size;			// 卡容量
+	unsigned int		r2w_factor;		// 读写速度比例因子
+	unsigned int		max_dtr;		// 最大数据传输速率
+	unsigned int		erase_size;		// 擦除块大小（以扇区为单位）    /* In sectors */
+	unsigned int		read_blkbits;		// 读块大小（以字节为单位）
+	unsigned int		write_blkbits;		// 写块大小（以字节为单位）
+	unsigned int		capacity;		// 卡容量（以字节为单位）
+	unsigned int		read_partial:1,		// 支持部分读取
+				read_misalign:1,	// 支持不对齐读取
+				write_partial:1,	// 支持部分写入
+				write_misalign:1,	// 支持不对齐写入
+				dsr_imp:1;		// DSR 实现
 };
 
 struct mmc_ext_csd {
@@ -123,15 +125,17 @@ struct mmc_ext_csd {
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
 };
 
+// 这个结构体用于存储 Secure Digital (SD) 卡的 SD Configuration Register (SCR) 的信息。
+// SCR 寄存器包含了 SD 卡的特殊特性，例如支持的数据总线宽度、支持的命令等等
 struct sd_scr {
-	unsigned char		sda_vsn;
-	unsigned char		sda_spec3;
-	unsigned char		bus_widths;
-#define SD_SCR_BUS_WIDTH_1	(1<<0)
-#define SD_SCR_BUS_WIDTH_4	(1<<2)
-	unsigned char		cmds;
-#define SD_SCR_CMD20_SUPPORT   (1<<0)
-#define SD_SCR_CMD23_SUPPORT   (1<<1)
+	unsigned char		sda_vsn;		// SD 版本
+	unsigned char		sda_spec3;		// SD 版本 3
+	unsigned char		bus_widths;		// 支持的数据总线宽度
+#define SD_SCR_BUS_WIDTH_1	(1<<0)			//    4bit
+#define SD_SCR_BUS_WIDTH_4	(1<<2)			//    1bit
+	unsigned char		cmds;			// 支持的命令
+#define SD_SCR_CMD20_SUPPORT   (1<<0)			//    支持CMD20
+#define SD_SCR_CMD23_SUPPORT   (1<<1)			//    支持CMD23
 };
 
 struct sd_ssr {
@@ -141,15 +145,15 @@ struct sd_ssr {
 };
 
 struct sd_switch_caps {
-	unsigned int		hs_max_dtr;
-	unsigned int		uhs_max_dtr;
+	unsigned int		hs_max_dtr;		// 高速模式下的最大数据传输率
+	unsigned int		uhs_max_dtr;		// 超高速模式下的最大数据传输率
 #define HIGH_SPEED_MAX_DTR	50000000
 #define UHS_SDR104_MAX_DTR	208000000
 #define UHS_SDR50_MAX_DTR	100000000
 #define UHS_DDR50_MAX_DTR	50000000
 #define UHS_SDR25_MAX_DTR	UHS_DDR50_MAX_DTR
 #define UHS_SDR12_MAX_DTR	25000000
-	unsigned int		sd3_bus_mode;
+	unsigned int		sd3_bus_mode;		// SD3.0总线模式
 #define UHS_SDR12_BUS_SPEED	0
 #define HIGH_SPEED_BUS_SPEED	1
 #define UHS_SDR25_BUS_SPEED	1
@@ -163,12 +167,12 @@ struct sd_switch_caps {
 #define SD_MODE_UHS_SDR50	(1 << UHS_SDR50_BUS_SPEED)
 #define SD_MODE_UHS_SDR104	(1 << UHS_SDR104_BUS_SPEED)
 #define SD_MODE_UHS_DDR50	(1 << UHS_DDR50_BUS_SPEED)
-	unsigned int		sd3_drv_type;
+	unsigned int		sd3_drv_type;		// SD3.0驱动类型
 #define SD_DRIVER_TYPE_B	0x01
 #define SD_DRIVER_TYPE_A	0x02
 #define SD_DRIVER_TYPE_C	0x04
 #define SD_DRIVER_TYPE_D	0x08
-	unsigned int		sd3_curr_limit;
+	unsigned int		sd3_curr_limit;		// SD3.0电流限制
 #define SD_SET_CURRENT_LIMIT_200	0
 #define SD_SET_CURRENT_LIMIT_400	1
 #define SD_SET_CURRENT_LIMIT_600	2
