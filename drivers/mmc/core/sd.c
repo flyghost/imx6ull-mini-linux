@@ -30,9 +30,9 @@
 /**
  * @brief 最大传输速率, CSD寄存器的bit[103:96]
  * 
- * 对于标准的SD卡, 这个区域的值应该总是为00110010b=0x32，这个等于25MHz，是强制的SD卡最大操作频率。
- * 对于高速卡来说，这个值应该是01011010=0x5a，这个值代表50MHz
- * 当时序通过CMD6和CMD0命令回到默认的时候，这个值会重新设置为0x32
+ * 对于标准的SD卡, 这个区域的值应该总是为00110010b=0x32,这个等于25MHz,是强制的SD卡最大操作频率.
+ * 对于高速卡来说,这个值应该是01011010=0x5a,这个值代表50MHz
+ * 当时序通过CMD6和CMD0命令回到默认的时候,这个值会重新设置为0x32
  * 
  * 计算公式:	m = UNSTUFF_BITS(resp, 99, 4);
  * 		e = UNSTUFF_BITS(resp, 96, 3);
@@ -63,7 +63,7 @@
  * 		14: 7.0
  * 		15: 8.0
  * 
- * 举例：0x32：e=2,m=6
+ * 举例:0x32:e=2,m=6
  *             1000000 * 25 = 25Mhz
  * 
  */
@@ -77,9 +77,21 @@ static const unsigned char tran_mant[] = {
 	35,	40,	45,	50,	55,	60,	70,	80,
 };
 
-// 用于计算SD卡的访问时间TAAC
-// TAAC 是一个 8 位字段,其中高三位表示时间单位的指数,低三位表示时间单位的尾数
-// tacc_exp 数组用于查找时间单位的指数
+/**
+ * @brief 用于计算SD卡数据的访问时间TAAC
+ * 
+ * 这个寄存器的默认值为0xE，代表1ms
+ * 
+ * 计算公式：csd->tacc_ns = (tacc_exp[e] * tacc_mant[m] + 9) / 10;
+ * 
+ * TAAC 是一个 8 位字段,其中高三位表示时间单位的指数,低三位表示时间单位的尾数
+ * 
+ * tacc_exp : 数组用于查找时间单位的指数
+ * 
+ * 举例：e=110=0x6, m=1
+ * 	(1000000 * 10 + 9) / 10 = 10M
+ * 
+ */
 static const unsigned int tacc_exp[] = {
 	1,	10,	100,	1000,	10000,	100000,	1000000, 10000000,
 };
@@ -154,6 +166,11 @@ void mmc_decode_cid(struct mmc_card *card)
 /**
  * @brief 根据给定的128bit的响应,解码赋值给卡的CSD结构体
  * 
+ * CSD寄存器包含了访问SD卡数据时的必要配置信息。
+ * 这个函数会根据SD卡的版本（V1.0或V2.0）来解码CSD寄存器中的数据，
+ * 并将解码后的数据存储在一个mmc_csd结构体中。
+ * 这个结构体包含了诸如读取时间、传输速率、卡命令类、读取块长度等信息
+ * 
  * @param card 
  * @return int 成功则返回0
  */
@@ -163,7 +180,7 @@ static int mmc_decode_csd(struct mmc_card *card)
 	unsigned int e, m, csd_struct;
 	u32 *resp = card->raw_csd;
 
-	csd_struct = UNSTUFF_BITS(resp, 126, 2);				// csd结构体
+	csd_struct = UNSTUFF_BITS(resp, 126, 2);				// csd结构体，用来判断SD卡是V1.0还是V2.0版本
 
 	switch (csd_struct) {
 	case 0:
@@ -172,9 +189,9 @@ static int mmc_decode_csd(struct mmc_card *card)
 		m = UNSTUFF_BITS(resp, 115, 4);					// 指数
 		e = UNSTUFF_BITS(resp, 112, 3);					// 尾数
 		csd->tacc_ns	 = (tacc_exp[e] * tacc_mant[m] + 9) / 10;
-		csd->tacc_clks	 = UNSTUFF_BITS(resp, 104, 8) * 100;
+		csd->tacc_clks	 = UNSTUFF_BITS(resp, 104, 8) * 100;		// 以时钟周期计算数据读访问时间
 
-		// 计算最大传输速度，CSD寄存器的bit[193:96]，该区域应该默认为0x32
+		// 计算最大传输速度,CSD寄存器的bit[193:96],该区域应该默认为0x32
 		m = UNSTUFF_BITS(resp, 99, 4);					// 时间值
 		e = UNSTUFF_BITS(resp, 96, 3);					// 传输速率单元
 		csd->max_dtr	  = tran_exp[e] * tran_mant[m];
@@ -182,16 +199,16 @@ static int mmc_decode_csd(struct mmc_card *card)
 
 		e = UNSTUFF_BITS(resp, 47, 3);
 		m = UNSTUFF_BITS(resp, 62, 12);
-		csd->capacity	  = (1 + m) << (e + 2);
+		csd->capacity	  = (1 + m) << (e + 2);				// block count(字节为单位)
 
-		csd->read_blkbits = UNSTUFF_BITS(resp, 80, 4);
+		csd->read_blkbits = UNSTUFF_BITS(resp, 80, 4);			// 读块的大小（字节为单位）
 		csd->read_partial = UNSTUFF_BITS(resp, 79, 1);
 		csd->write_misalign = UNSTUFF_BITS(resp, 78, 1);
 		csd->read_misalign = UNSTUFF_BITS(resp, 77, 1);
 		csd->dsr_imp = UNSTUFF_BITS(resp, 76, 1);
-		csd->r2w_factor = UNSTUFF_BITS(resp, 26, 3);
-		csd->write_blkbits = UNSTUFF_BITS(resp, 22, 4);
-		csd->write_partial = UNSTUFF_BITS(resp, 21, 1);
+		csd->r2w_factor = UNSTUFF_BITS(resp, 26, 3);			// 写速度比例因子
+		csd->write_blkbits = UNSTUFF_BITS(resp, 22, 4);			// 最大写数据块长度
+		csd->write_partial = UNSTUFF_BITS(resp, 21, 1);			// 允许块部分写
 
 		if (UNSTUFF_BITS(resp, 46, 1)) {
 			csd->erase_size = 1;
@@ -252,6 +269,8 @@ static int mmc_decode_csd(struct mmc_card *card)
 /**
  * @brief 解码 SD 卡的 SCR(SD 卡配置寄存器)
  * 
+ * SD卡规范版本、数据状态擦除、安全支持等信息
+ * 
  * @param card 
  * @return int 
  */
@@ -290,6 +309,13 @@ static int mmc_decode_scr(struct mmc_card *card)
 /*
  * Fetch and process SD Status register.
  */
+
+/**
+ * @brief 获取SD卡的SSR状态寄存器
+ * 
+ * @param card 
+ * @return int 
+ */
 static int mmc_read_ssr(struct mmc_card *card)
 {
 	unsigned int au, es, et, eo;
@@ -314,6 +340,9 @@ static int mmc_read_ssr(struct mmc_card *card)
 		goto out;
 	}
 
+	// 转换成CPU的本地字节序
+	// 如果在大段架构上，可能什么都不做
+	// 如果在小段架构上，可能会交换字节序
 	for (i = 0; i < 16; i++)
 		ssr[i] = be32_to_cpu(ssr[i]);
 
@@ -828,6 +857,13 @@ try_again:
 	return err;
 }
 
+/**
+ * @brief 获取SD卡的CSD信息
+ * 
+ * @param host 	
+ * @param card 	MMC设备
+ * @return int 
+ */
 int mmc_sd_get_csd(struct mmc_host *host, struct mmc_card *card)
 {
 	int err;

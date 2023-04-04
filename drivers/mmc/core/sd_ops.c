@@ -349,6 +349,13 @@ int mmc_sd_switch(struct mmc_card *card, int mode, int group,
 	return 0;
 }
 
+/**
+ * @brief 获取SD卡的状态信息
+ * 
+ * @param card 
+ * @param ssr 
+ * @return int 
+ */
 int mmc_app_sd_status(struct mmc_card *card, void *ssr)
 {
 	int err;
@@ -357,12 +364,14 @@ int mmc_app_sd_status(struct mmc_card *card, void *ssr)
 	struct mmc_data data = {0};
 	struct scatterlist sg;
 
+	// 检查参数是否有效，如果无效会触发一个内核bug
 	BUG_ON(!card);
 	BUG_ON(!card->host);
 	BUG_ON(!ssr);
 
 	/* NOTE: caller guarantees ssr is heap-allocated */
 
+	// 发送命令
 	err = mmc_app_cmd(card->host, card);
 	if (err)
 		return err;
@@ -380,10 +389,13 @@ int mmc_app_sd_status(struct mmc_card *card, void *ssr)
 	data.sg = &sg;
 	data.sg_len = 1;
 
+	// 初始化一个散列表项，用于描述数据缓冲区
 	sg_init_one(&sg, ssr, 64);
 
+	// 设置数据超时时间
 	mmc_set_data_timeout(&data, card);
 
+	// 等待MMC请求完成
 	mmc_wait_for_req(card->host, &mrq);
 
 	if (cmd.error)
