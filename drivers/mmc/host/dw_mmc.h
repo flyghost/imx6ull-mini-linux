@@ -242,25 +242,25 @@ extern int dw_mci_resume(struct dw_mci *host);
  * @sdio_id: Number of this slot in the SDIO interrupt registers.
  */
 struct dw_mci_slot {
-	struct mmc_host		*mmc;
-	struct dw_mci		*host;
+	struct mmc_host		*mmc;		// 此插槽所代表的主机
+	struct dw_mci		*host;		// 此插槽正在使用的MMC控制器
 
-	int			quirks;
+	int			quirks;		// 插槽级别的特殊行为(DW_MCI_SLOT_QUIRK_XXX)
 
-	u32			ctype;
+	u32			ctype;		// 此插槽的卡类型
 
-	struct mmc_request	*mrq;
-	struct list_head	queue_node;
+	struct mmc_request	*mrq;		// 当前正在处理或等待处理的 mmc_request，或者当插槽处于空闲状态时为 NULL
+	struct list_head	queue_node;	// 列表节点，用于将此节点放置在 &struct dw_mci 的 @queue 列表中
 
-	unsigned int		clock;
-	unsigned int		__clk_old;
+	unsigned int		clock;		// 由 set_ios() 配置的时钟速率。受 host->lock 保护
+	unsigned int		__clk_old;	// 最后更新的时钟，反映时钟分频器。跟踪此项可帮助我们避免使用 CONFIG_MMC_CLKGATE 时在控制台上产生垃圾信息
 
-	unsigned long		flags;
+	unsigned long		flags;		// 与插槽相关联的随机状态位
 #define DW_MMC_CARD_PRESENT	0
 #define DW_MMC_CARD_NEED_INIT	1
 #define DW_MMC_CARD_NO_LOW_PWR	2
-	int			id;
-	int			sdio_id;
+	int			id;		// 此插槽的编号
+	int			sdio_id;	// 此插槽在 SDIO 中断寄存器中的编号
 };
 
 /**

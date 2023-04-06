@@ -109,33 +109,33 @@ struct mmc_data {
 	unsigned int		blksz;		/* data block size */
 	unsigned int		blocks;		/* number of blocks */
 	int			error;		/* data error */
-	unsigned int		flags;
+	unsigned int		flags;		// 标志位,用于指示数据传输的类型（读、写或流）
 
 #define MMC_DATA_WRITE	(1 << 8)
 #define MMC_DATA_READ	(1 << 9)
 #define MMC_DATA_STREAM	(1 << 10)
 
-	unsigned int		bytes_xfered;
+	unsigned int		bytes_xfered;	// 已经传输字节数
 
 	struct mmc_command	*stop;		/* stop command */
 	struct mmc_request	*mrq;		/* associated request */
 
-	unsigned int		sg_len;		/* size of scatter list */
-	int			sg_count;	/* mapped sg entries */
-	struct scatterlist	*sg;		/* I/O scatter list */
-	s32			host_cookie;	/* host private data */
+	unsigned int		sg_len;		/* size of scatter list */	// 散列列表的大小
+	int			sg_count;	/* mapped sg entries */		// 映射的散列列表项数
+	struct scatterlist	*sg;		/* I/O scatter list */		// IO散列列表
+	s32			host_cookie;	/* host private data */		// host私有数据
 };
 
 struct mmc_host;
 struct mmc_request {
-	struct mmc_command	*sbc;		/* SET_BLOCK_COUNT for multiblock */
-	struct mmc_command	*cmd;
-	struct mmc_data		*data;
-	struct mmc_command	*stop;
+	struct mmc_command	*sbc;		/* SET_BLOCK_COUNT for multiblock */	// 用于多块传输的SET_BLOCK_COUNT命令
+	struct mmc_command	*cmd;		// 要执行的命令
+	struct mmc_data		*data;		// 与命令关联的数据
+	struct mmc_command	*stop;		// 停止命令
 
-	struct completion	completion;
+	struct completion	completion;	// 一个完成对象, 用于等待请求完成
 	void			(*done)(struct mmc_request *);/* completion function */
-	struct mmc_host		*host;
+	struct mmc_host		*host;		// 表示处理此请求的主机
 };
 
 struct mmc_card;

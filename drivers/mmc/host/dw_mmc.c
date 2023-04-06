@@ -232,7 +232,7 @@ err:
 static void mci_send_cmd(struct dw_mci_slot *slot, u32 cmd, u32 arg);
 
 /**
- * @brief 准备命令
+ * @brief 准备命令(第五步: CMD非标转换)
  * 
  * 由于DWMMC没有遵循sdhci标准, 所以需要手动将从core传过来的CMD字段重新组合
  * 
@@ -412,6 +412,13 @@ static void dw_mci_wait_while_busy(struct dw_mci *host, u32 cmd_flags)
 	}
 }
 
+/**
+ * @brief 写入CMD和ARG
+ * 
+ * @param host 
+ * @param cmd 
+ * @param cmd_flags 
+ */
 static void dw_mci_start_command(struct dw_mci *host,
 				 struct mmc_command *cmd, u32 cmd_flags)
 {
@@ -427,6 +434,12 @@ static void dw_mci_start_command(struct dw_mci *host,
 	mci_writel(host, CMD, cmd_flags | SDMMC_CMD_START);
 }
 
+/**
+ * @brief 写入STOP命令
+ * 
+ * @param host 
+ * @param data 
+ */
 static inline void send_stop_abort(struct dw_mci *host, struct mmc_data *data)
 {
 	struct mmc_command *stop = data->stop ? data->stop : &host->stop_abort;
@@ -434,6 +447,11 @@ static inline void send_stop_abort(struct dw_mci *host, struct mmc_data *data)
 }
 
 /* DMA interface functions */
+/**
+ * @brief 停止DMA
+ * 
+ * @param host 
+ */
 static void dw_mci_stop_dma(struct dw_mci *host)
 {
 	if (host->using_dma) {
@@ -445,6 +463,12 @@ static void dw_mci_stop_dma(struct dw_mci *host)
 	set_bit(EVENT_XFER_COMPLETE, &host->pending_events);
 }
 
+/**
+ * @brief 获取DMA的方向
+ * 
+ * @param data 
+ * @return int 
+ */
 static int dw_mci_get_dma_dir(struct mmc_data *data)
 {
 	if (data->flags & MMC_DATA_WRITE)
@@ -714,6 +738,14 @@ static const struct dw_mci_dma_ops dw_mci_idmac_ops = {
 };
 #endif /* CONFIG_MMC_DW_IDMAC */
 
+/**
+ * @brief 准备DMA传输
+ * 
+ * @param host 
+ * @param data 
+ * @param next 
+ * @return int 
+ */
 static int dw_mci_pre_dma_transfer(struct dw_mci *host,
 				   struct mmc_data *data,
 				   bool next)
@@ -729,6 +761,7 @@ static int dw_mci_pre_dma_transfer(struct dw_mci *host,
 	 * non-word-aligned buffers or lengths. Also, we don't bother
 	 * with all the DMA setup overhead for short transfers.
 	 */
+	// 我们不会对"复杂"的传输进行DMA,例如非字对齐的缓冲区或长度.此外,我们不需要为短传输操心所有的DMA设置开销.
 	if (data->blocks * data->blksz < DW_MCI_DMA_THRESHOLD)
 		return -EINVAL;
 
@@ -753,6 +786,13 @@ static int dw_mci_pre_dma_transfer(struct dw_mci *host,
 	return sg_len;
 }
 
+/**
+ * @brief 准备一个新的请求, 预处理(主要用于如果使能了DMA传输, 对DMA的预处理)
+ * 
+ * @param mmc 
+ * @param mrq 
+ * @param is_first_req 
+ */
 static void dw_mci_pre_req(struct mmc_host *mmc,
 			   struct mmc_request *mrq,
 			   bool is_first_req)
@@ -772,6 +812,13 @@ static void dw_mci_pre_req(struct mmc_host *mmc,
 		data->host_cookie = 0;
 }
 
+/**
+ * @brief 发布一个新的请求
+ * 
+ * @param mmc 
+ * @param mrq 
+ * @param err 
+ */
 static void dw_mci_post_req(struct mmc_host *mmc,
 			    struct mmc_request *mrq,
 			    int err)
@@ -831,6 +878,14 @@ done:
 #endif
 }
 
+/**
+ * @brief 设置读的阈值(read threshold size)
+ * 
+ * 这里只和block size有关
+ * 
+ * @param host 
+ * @param data 
+ */
 static void dw_mci_ctrl_rd_thld(struct dw_mci *host, struct mmc_data *data)
 {
 	unsigned int blksz = data->blksz;
@@ -851,6 +906,10 @@ static void dw_mci_ctrl_rd_thld(struct dw_mci *host, struct mmc_data *data)
 	    host->timing != MMC_TIMING_UHS_SDR104)
 		goto disable;
 
+	// 计算block计算的深度是多少, 根据位宽来计算深度
+	// 当位宽为16bits时, blksz_depth = blksz / (1 << 1) = blksz / 2
+	// 当位宽为32bits时, blksz_depth = blksz / (1 << 2) = blksz / 4
+	// 当位宽为64bits时, blksz_depth = blksz / (1 << 3) = blksz / 8
 	blksz_depth = blksz / (1 << host->data_shift);
 	fifo_depth = host->fifo_depth;
 
@@ -870,6 +929,13 @@ disable:
 	mci_writel(host, CDTHRCTL, SDMMC_SET_RD_THLD(0, 0));
 }
 
+/**
+ * @brief 将需要发送的数据提交到DMA进行传输
+ * 
+ * @param host 
+ * @param data 
+ * @return int 
+ */
 static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 {
 	unsigned long irqflags;
@@ -920,6 +986,12 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 	return 0;
 }
 
+/**
+ * @brief 提交需要传输的数据
+ * 
+ * @param host 
+ * @param data 
+ */
 static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 {
 	unsigned long irqflags;
@@ -931,6 +1003,7 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 	host->sg = NULL;
 	host->data = data;
 
+	// 设置数据传输方向, 如果是读, 需要额外设置读的阈值, 当FIFO中的数据大于这个阈值, 控制器会停止时钟来暂停传输
 	if (data->flags & MMC_DATA_READ) {
 		host->dir_status = DW_MCI_RECV_STATUS;
 		dw_mci_ctrl_rd_thld(host, data);
@@ -938,6 +1011,7 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 		host->dir_status = DW_MCI_SEND_STATUS;
 	}
 
+	// 将数据提交给DMA进行传输
 	if (dw_mci_submit_data_dma(host, data)) {
 		int flags = SG_MITER_ATOMIC;
 		if (host->data->flags & MMC_DATA_READ)
@@ -967,7 +1041,7 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 		 * If next issued data may be transfered by DMA mode,
 		 * prev_blksz should be invalidated.
 		 */
-		mci_writel(host, FIFOTH, host->fifoth_val);
+		mci_writel(host, FIFOTH, host->fifoth_val);		// 设置 RX TX 阈值
 		host->prev_blksz = 0;
 	} else {
 		/*
@@ -975,6 +1049,7 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 		 * It will be used to decide whether to update
 		 * fifoth register next time.
 		 */
+		// 保持当前的块大小.它将用于决定下次是否更新fifoth寄存器.
 		host->prev_blksz = data->blksz;
 	}
 }
@@ -1072,6 +1147,13 @@ static void dw_mci_setup_bus(struct dw_mci_slot *slot, bool force_clkinit)
 	mci_writel(host, CTYPE, (slot->ctype << slot->id));
 }
 
+/**
+ * @brief 请求(第四步: 初始化DWMMC)
+ * 
+ * @param host 
+ * @param slot 
+ * @param cmd 
+ */
 static void __dw_mci_start_request(struct dw_mci *host,
 				   struct dw_mci_slot *slot,
 				   struct mmc_command *cmd)
@@ -1093,14 +1175,15 @@ static void __dw_mci_start_request(struct dw_mci *host,
 
 	data = cmd->data;
 	if (data) {
-		mci_writel(host, TMOUT, 0xFFFFFFFF);
-		mci_writel(host, BYTCNT, data->blksz*data->blocks);
-		mci_writel(host, BLKSIZ, data->blksz);
+		mci_writel(host, TMOUT, 0xFFFFFFFF);			// 设置为最大超时时间
+		mci_writel(host, BYTCNT, data->blksz*data->blocks);	// 设置当前传输的总数据量
+		mci_writel(host, BLKSIZ, data->blksz);			// 设置当前传输的块大小
 	}
 
-	cmdflags = dw_mci_prepare_command(slot->mmc, cmd);
+	cmdflags = dw_mci_prepare_command(slot->mmc, cmd);		// CMD 标准结构和非标准结构转换
 
 	/* this is the first command, send the initialization clock */
+	// 判断是否是第一次发送命令, 如果是的话, 则需要设置CMD寄存器的标志位来初始化时钟
 	if (test_and_clear_bit(DW_MMC_CARD_NEED_INIT, &slot->flags))
 		cmdflags |= SDMMC_CMD_INIT;
 
@@ -1137,17 +1220,33 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		host->stop_cmdr = dw_mci_prep_stop_abort(host, cmd);
 }
 
+/**
+ * @brief 请求(第三步: 即时请求, CMD是多块传输还是非多块传输命令)
+ * 
+ * @param host 
+ * @param slot 
+ */
 static void dw_mci_start_request(struct dw_mci *host,
 				 struct dw_mci_slot *slot)
 {
 	struct mmc_request *mrq = slot->mrq;
 	struct mmc_command *cmd;
 
+	// 判断是否是多块传输的命令
 	cmd = mrq->sbc ? mrq->sbc : mrq->cmd;
 	__dw_mci_start_request(host, slot, cmd);
 }
 
 /* must be called with host->lock held */
+/**
+ * @brief 请求(第二步: 发起请求, 区分是即时请求还是加入队列延迟请求)
+ * 
+ * 如果Host不在IDLE状态, 需要将该slot请求放入host队列中
+ * 
+ * @param host 
+ * @param slot 
+ * @param mrq 
+ */
 static void dw_mci_queue_request(struct dw_mci *host, struct dw_mci_slot *slot,
 				 struct mmc_request *mrq)
 {
@@ -1156,6 +1255,7 @@ static void dw_mci_queue_request(struct dw_mci *host, struct dw_mci_slot *slot,
 
 	slot->mrq = mrq;
 
+	// 检测主机状态, 如果处于电压未切换完成状态, 需要手动转换到IDLE状态
 	if (host->state == STATE_WAITING_CMD11_DONE) {
 		dev_warn(&slot->mmc->class_dev,
 			 "Voltage change didn't complete\n");
@@ -1167,14 +1267,23 @@ static void dw_mci_queue_request(struct dw_mci *host, struct dw_mci_slot *slot,
 		host->state = STATE_IDLE;
 	}
 
+	// 如果在IDLE状态, 则发起请求
 	if (host->state == STATE_IDLE) {
 		host->state = STATE_SENDING_CMD;
 		dw_mci_start_request(host, slot);
+
+	// 否则, 将该slot加入host队列
 	} else {
 		list_add_tail(&slot->queue_node, &host->queue);
 	}
 }
 
+/**
+ * @brief 请求(第一步: 开始请求, 入口函数)
+ * 
+ * @param mmc 
+ * @param mrq 
+ */
 static void dw_mci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct dw_mci_slot *slot = mmc_priv(mmc);
@@ -1189,13 +1298,15 @@ static void dw_mci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	 */
 	spin_lock_bh(&host->lock);
 
+	// 检测到卡不存在
 	if (!test_bit(DW_MMC_CARD_PRESENT, &slot->flags)) {
-		spin_unlock_bh(&host->lock);
-		mrq->cmd->error = -ENOMEDIUM;
-		mmc_request_done(mmc, mrq);
+		spin_unlock_bh(&host->lock);	// 解锁
+		mrq->cmd->error = -ENOMEDIUM;	// 设置错误标记
+		mmc_request_done(mmc, mrq);	// 完成请求
 		return;
 	}
 
+	// 开始请求: 要么直接提交, 要么加入对列后延迟提交
 	dw_mci_queue_request(host, slot, mrq);
 
 	spin_unlock_bh(&host->lock);
@@ -1380,6 +1491,12 @@ static int dw_mci_get_ro(struct mmc_host *mmc)
 	return read_only;
 }
 
+/**
+ * @brief 检测卡是否存在
+ * 
+ * @param mmc 
+ * @return int 
+ */
 static int dw_mci_get_cd(struct mmc_host *mmc)
 {
 	int present;
@@ -2884,6 +3001,10 @@ int dw_mci_probe(struct dw_mci *host)
 	 * Get the host data width - this assumes that HCON has been set with
 	 * the correct values.
 	 */
+	// 获取HCOM 寄存器中数据位宽
+	// 0: 16bits位宽
+	// 1: 32bits位宽
+	// 2: 64bits位宽
 	i = (mci_readl(host, HCON) >> 7) & 0x7;
 	if (!i) {
 		host->push_data = dw_mci_push_data16;

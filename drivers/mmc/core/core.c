@@ -543,6 +543,14 @@ static void mmc_wait_for_req_done(struct mmc_host *host,
  *	host prepare for the new request. Preparation of a request may be
  *	performed while another request is running on the host.
  */
+
+/**
+ * @brief 准备一个新的MMC请求
+ * 
+ * @param host 
+ * @param mrq 
+ * @param is_first_req 是否是第一个请求,如果没有先前启动的请求可以与此调用并行运行，则为True，否则为false
+ */
 static void mmc_pre_req(struct mmc_host *host, struct mmc_request *mrq,
 		 bool is_first_req)
 {
@@ -561,6 +569,14 @@ static void mmc_pre_req(struct mmc_host *host, struct mmc_request *mrq,
  *
  *	Let the host post process a completed request. Post processing of
  *	a request may be performed while another reuqest is running.
+ */
+
+/**
+ * @brief 发布一个完成的请求
+ * 
+ * @param host 
+ * @param mrq 
+ * @param err 如果非零，则清除在 pre_req 中创建的所有资源
  */
 static void mmc_post_req(struct mmc_host *host, struct mmc_request *mrq,
 			 int err)
