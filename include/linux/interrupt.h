@@ -483,11 +483,11 @@ static inline struct task_struct *this_cpu_ksoftirqd(void)
 
 struct tasklet_struct
 {
-	struct tasklet_struct *next;
-	unsigned long state;
-	atomic_t count;
-	void (*func)(unsigned long);
-	unsigned long data;
+	struct tasklet_struct *next;		// 执行下一个tasklet_struct指针
+	unsigned long state;			// 表示tasklet的状态, 例如是否已经调度
+	atomic_t count;				// 原子计数器, 用于防止tasklet被同时执行多次
+	void (*func)(unsigned long);		// 指向tasklet函数的指针
+	unsigned long data;			// 传递给tasklet函数的数据
 };
 
 #define DECLARE_TASKLET(name, func, data) \
