@@ -413,7 +413,7 @@ static void dw_mci_wait_while_busy(struct dw_mci *host, u32 cmd_flags)
 }
 
 /**
- * @brief 写入CMD和ARG
+ * @brief 写入CMD和ARG, 并启动传输
  * 
  * @param host 
  * @param cmd 
@@ -631,6 +631,12 @@ static void dw_mci_translate_sglist(struct dw_mci *host, struct mmc_data *data,
 	wmb();
 }
 
+/**
+ * @brief 启动DWMMC IDMAC
+ * 
+ * @param host 
+ * @param sg_len 
+ */
 static void dw_mci_idmac_start_dma(struct dw_mci *host, unsigned int sg_len)
 {
 	u32 temp;
@@ -837,6 +843,12 @@ static void dw_mci_post_req(struct mmc_host *mmc,
 	data->host_cookie = 0;
 }
 
+/**
+ * @brief 调整 DWMMC 的 FIFOTH 寄存器
+ * 
+ * @param host 
+ * @param data 
+ */
 static void dw_mci_adjust_fifoth(struct dw_mci *host, struct mmc_data *data)
 {
 #ifdef CONFIG_MMC_DW_IDMAC
@@ -966,18 +978,20 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 	 * If current block size is same with previous size,
 	 * no need to update fifoth.
 	 */
+	// 如果上一次传输使用的是DMA, 则正常情况下prev_blksz已经被赋值为blksz了
+	// 如果上一次传输不适用DMA, 则prev_blksz会被置零, 就会进入下面配置FIFOTH
 	if (host->prev_blksz != data->blksz)
 		dw_mci_adjust_fifoth(host, data);
 
 	/* Enable the DMA interface */
 	temp = mci_readl(host, CTRL);
-	temp |= SDMMC_CTRL_DMA_ENABLE;
+	temp |= SDMMC_CTRL_DMA_ENABLE;				// 使能DMA
 	mci_writel(host, CTRL, temp);
 
 	/* Disable RX/TX IRQs, let DMA handle it */
 	spin_lock_irqsave(&host->irq_lock, irqflags);
 	temp = mci_readl(host, INTMASK);
-	temp  &= ~(SDMMC_INT_RXDR | SDMMC_INT_TXDR);
+	temp  &= ~(SDMMC_INT_RXDR | SDMMC_INT_TXDR);		// 屏蔽其他中断, 只保留 RX TX FIFO 请求
 	mci_writel(host, INTMASK, temp);
 	spin_unlock_irqrestore(&host->irq_lock, irqflags);
 
@@ -1192,8 +1206,9 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		wmb();
 	}
 
-	dw_mci_start_command(host, cmd, cmdflags);
+	dw_mci_start_command(host, cmd, cmdflags);			// 写入CMD和ARG参数, 并启动传输
 
+	// 判断是否是切换电压的CMD11命令
 	if (cmd->opcode == SD_SWITCH_VOLTAGE) {
 		unsigned long irqflags;
 
@@ -1207,6 +1222,9 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		 * command hasn't already completed (indicating the the irq
 		 * already ran so we don't want the timeout).
 		 */
+		// Databook表示在2ms后没有响应就会失败,但有证据表明,有时cmd11中断需要超过130ms.
+		// 我们将设置为500ms,加上一个额外的jiffy,以防jiffies即将滚动.
+		// 我们在自旋锁下执行整个操作,并且仅当命令尚未完成时(表明irq已经运行,因此我们不希望超时).
 		spin_lock_irqsave(&host->irq_lock, irqflags);
 		if (!test_bit(EVENT_CMD_COMPLETE, &host->pending_events))
 			mod_timer(&host->cmd11_timer,
@@ -1214,10 +1232,11 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		spin_unlock_irqrestore(&host->irq_lock, irqflags);
 	}
 
+	// 判断是否有停止命令
 	if (mrq->stop)
-		host->stop_cmdr = dw_mci_prepare_command(slot->mmc, mrq->stop);
+		host->stop_cmdr = dw_mci_prepare_command(slot->mmc, mrq->stop);		// 将STOP命令准转转为DWMMC的非标寄存器
 	else
-		host->stop_cmdr = dw_mci_prep_stop_abort(host, cmd);
+		host->stop_cmdr = dw_mci_prep_stop_abort(host, cmd);			// 构造一个停止命令对应的CMD
 }
 
 /**
@@ -1312,6 +1331,14 @@ static void dw_mci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	spin_unlock_bh(&host->lock);
 }
 
+/**
+ * @brief 配置DWMMC的IO参数
+ * 
+ * 时钟速率/总线宽度/电源模式等
+ * 
+ * @param mmc 
+ * @param ios 
+ */
 static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct dw_mci_slot *slot = mmc_priv(mmc);
@@ -1319,6 +1346,7 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	u32 regs;
 	int ret;
 
+	// 设置总线宽度
 	switch (ios->bus_width) {
 	case MMC_BUS_WIDTH_4:
 		slot->ctype = SDMMC_CTYPE_4BIT;
@@ -1331,14 +1359,15 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		slot->ctype = SDMMC_CTYPE_1BIT;
 	}
 
+	// 设置DDR模式
 	regs = mci_readl(slot->host, UHS_REG);
 
 	/* DDR mode set */
 	if (ios->timing == MMC_TIMING_MMC_DDR52 ||
 	    ios->timing == MMC_TIMING_MMC_HS400)
-		regs |= ((0x1 << slot->id) << 16);
+		regs |= ((0x1 << slot->id) << 16);	// DDR 模式
 	else
-		regs &= ~((0x1 << slot->id) << 16);
+		regs &= ~((0x1 << slot->id) << 16);	// Non-DDR 模式
 
 	mci_writel(slot->host, UHS_REG, regs);
 	slot->host->timing = ios->timing;
@@ -1430,6 +1459,13 @@ static int dw_mci_card_busy(struct mmc_host *mmc)
 	return !!(status & SDMMC_STATUS_BUSY);
 }
 
+/**
+ * @brief 切换电压
+ * 
+ * @param mmc 
+ * @param ios 
+ * @return int 
+ */
 static int dw_mci_switch_voltage(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct dw_mci_slot *slot = mmc_priv(mmc);
@@ -1444,18 +1480,21 @@ static int dw_mci_switch_voltage(struct mmc_host *mmc, struct mmc_ios *ios)
 	 * the UHS_REG for this.  For other instances (like exynos) the UHS_REG
 	 * does no harm but you need to set the regulator directly.  Try both.
 	 */
+	// 设定电压.
+	// 请注意,dw_mmc的一些实例可能为此使用UHS_REG.
+	// 对于其他情况(如exynos), UHS_REG没有坏处,但您需要直接设置调节器.试一试.
 	uhs = mci_readl(host, UHS_REG);
-	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
+	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {				// 3.3V电压信号(单位: uV)
 		min_uv = 2700000;
 		max_uv = 3600000;
 		uhs &= ~v18;
-	} else {
+	} else {									// 1.8V电压信号(单位: uV)
 		min_uv = 1700000;
 		max_uv = 1950000;
 		uhs |= v18;
 	}
 	if (!IS_ERR(mmc->supply.vqmmc)) {
-		ret = regulator_set_voltage(mmc->supply.vqmmc, min_uv, max_uv);
+		ret = regulator_set_voltage(mmc->supply.vqmmc, min_uv, max_uv);		// 同时需要设置regulator到对应的电压
 
 		if (ret) {
 			dev_dbg(&mmc->class_dev,
@@ -1528,6 +1567,17 @@ static int dw_mci_get_cd(struct mmc_host *mmc)
 	return present;
 }
 
+/**
+ * @brief 初始化MMC卡
+ * 
+ * 在这个特定的实现中,该函数检查主机是否支持 SDIO 中断.
+ * 如果是,则根据卡片类型来启用或禁用低功耗模式.
+ * 低功耗模式会在空闲时停止卡片时钟.
+ * 如果需要 SDIO 中断正常工作,则应禁用低功耗模式
+ * 
+ * @param mmc 
+ * @param card 
+ */
 static void dw_mci_init_card(struct mmc_host *mmc, struct mmc_card *card)
 {
 	struct dw_mci_slot *slot = mmc_priv(mmc);
@@ -1538,6 +1588,8 @@ static void dw_mci_init_card(struct mmc_host *mmc, struct mmc_card *card)
 	 * description of the CLKENA register we should disable low power mode
 	 * for SDIO cards if we need SDIO interrupts to work.
 	 */
+	// 在低功耗模式下, 如果IDLE则会停止时钟.
+	// 根据 CLKENA 寄存器的描述, 如果需要SDIO中断正常工作, 则需要禁用低功耗模式.
 	if (mmc->caps & MMC_CAP_SDIO_IRQ) {
 		const u32 clken_low_pwr = SDMMC_CLKEN_LOW_PWR << slot->id;
 		u32 clk_en_a_old;
@@ -1545,23 +1597,30 @@ static void dw_mci_init_card(struct mmc_host *mmc, struct mmc_card *card)
 
 		clk_en_a_old = mci_readl(host, CLKENA);
 
-		if (card->type == MMC_TYPE_SDIO ||
+		if (card->type == MMC_TYPE_SDIO ||				// 如果是SDIO卡或者SD组合卡
 		    card->type == MMC_TYPE_SD_COMBO) {
-			set_bit(DW_MMC_CARD_NO_LOW_PWR, &slot->flags);
+			set_bit(DW_MMC_CARD_NO_LOW_PWR, &slot->flags);		// 禁用低功耗模式
 			clk_en_a = clk_en_a_old & ~clken_low_pwr;
 		} else {
-			clear_bit(DW_MMC_CARD_NO_LOW_PWR, &slot->flags);
+			clear_bit(DW_MMC_CARD_NO_LOW_PWR, &slot->flags);	// 启用低功耗模式
 			clk_en_a = clk_en_a_old | clken_low_pwr;
 		}
 
+		// 如果两个寄存器不相等, 则更新寄存器
 		if (clk_en_a != clk_en_a_old) {
 			mci_writel(host, CLKENA, clk_en_a);
-			mci_send_cmd(slot, SDMMC_CMD_UPD_CLK |
+			mci_send_cmd(slot, SDMMC_CMD_UPD_CLK |			// 发送CMD, 更新卡的时钟域时钟
 				     SDMMC_CMD_PRV_DAT_WAIT, 0);
 		}
 	}
 }
 
+/**
+ * @brief 使能插槽slot的中断
+ * 
+ * @param mmc 
+ * @param enb 
+ */
 static void dw_mci_enable_sdio_irq(struct mmc_host *mmc, int enb)
 {
 	struct dw_mci_slot *slot = mmc_priv(mmc);
@@ -1574,9 +1633,9 @@ static void dw_mci_enable_sdio_irq(struct mmc_host *mmc, int enb)
 	/* Enable/disable Slot Specific SDIO interrupt */
 	int_mask = mci_readl(host, INTMASK);
 	if (enb)
-		int_mask |= SDMMC_INT_SDIO(slot->sdio_id);
+		int_mask |= SDMMC_INT_SDIO(slot->sdio_id);		// 使能对应插槽slot的ID
 	else
-		int_mask &= ~SDMMC_INT_SDIO(slot->sdio_id);
+		int_mask &= ~SDMMC_INT_SDIO(slot->sdio_id);		// 禁用对应插槽slot的ID
 	mci_writel(host, INTMASK, int_mask);
 
 	spin_unlock_irqrestore(&host->irq_lock, irqflags);
@@ -2800,6 +2859,11 @@ ciu_out:
 	return ret;
 }
 
+/**
+ * @brief CMD11 执行的超时中断
+ * 
+ * @param arg 
+ */
 static void dw_mci_cmd11_timer(unsigned long arg)
 {
 	struct dw_mci *host = (struct dw_mci *)arg;
@@ -2917,6 +2981,7 @@ int dw_mci_probe(struct dw_mci *host)
 	u32 fifo_size;
 	int init_slots = 0;
 
+	// 解析设备树, 获取板级信息
 	if (!host->pdata) {
 		host->pdata = dw_mci_parse_dt(host);
 		if (IS_ERR(host->pdata)) {
@@ -2931,6 +2996,7 @@ int dw_mci_probe(struct dw_mci *host)
 		return -ENODEV;
 	}
 
+	// 获取BIU时钟
 	host->biu_clk = devm_clk_get(host->dev, "biu");
 	if (IS_ERR(host->biu_clk)) {
 		dev_dbg(host->dev, "biu clock not available\n");
@@ -2942,6 +3008,7 @@ int dw_mci_probe(struct dw_mci *host)
 		}
 	}
 
+	// 获取CIU时钟
 	host->ciu_clk = devm_clk_get(host->dev, "ciu");
 	if (IS_ERR(host->ciu_clk)) {
 		dev_dbg(host->dev, "ciu clock not available\n");

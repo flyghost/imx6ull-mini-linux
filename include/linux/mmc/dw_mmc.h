@@ -162,7 +162,7 @@ struct dw_mci {
 	u32			data_status;
 	u32			stop_cmdr;
 	u32			dir_status;
-	struct tasklet_struct	tasklet;
+	struct tasklet_struct	tasklet;		// cmd断结束后(包含cmd11超时中断), 执行的底半部处理程序(顶半步处理程序为中断处理程序)
 	unsigned long		pending_events;
 	unsigned long		completed_events;
 	enum dw_mci_state	state;
@@ -245,27 +245,27 @@ struct block_settings {
 
 /* Board platform data */
 struct dw_mci_board {
-	u32 num_slots;
+	u32 num_slots;								// 插槽数量
 
-	u32 quirks; /* Workaround / Quirk flags */
-	unsigned int bus_hz; /* Clock speed at the cclk_in pad */
+	u32 quirks; /* Workaround / Quirk flags */				// 控制器需要的工作区或变通方法的标志
+	unsigned int bus_hz; /* Clock speed at the cclk_in pad */		// 总线频率
 
-	u32 caps;	/* Capabilities */
-	u32 caps2;	/* More capabilities */
-	u32 pm_caps;	/* PM capabilities */
+	u32 caps;	/* Capabilities */					// 控制器能力
+	u32 caps2;	/* More capabilities */					// 控制器更多能力
+	u32 pm_caps;	/* PM capabilities */					// 控制器电源管理能力
 	/*
 	 * Override fifo depth. If 0, autodetect it from the FIFOTH register,
 	 * but note that this may not be reliable after a bootloader has used
 	 * it.
 	 */
-	unsigned int fifo_depth;
+	unsigned int fifo_depth;						// FIFO深度, 如果为0, 则从FIFOTH寄存器自动检测, 但注意在引导加载程序使用后可能不可靠
 
 	/* delay in mS before detecting cards after interrupt */
-	u32 detect_delay_ms;
+	u32 detect_delay_ms;							// 在中断后检测卡片前的延迟（以毫秒为单位）
 
-	struct dw_mci_dma_ops *dma_ops;
-	struct dma_pdata *data;
-	struct block_settings *blk_settings;
+	struct dw_mci_dma_ops *dma_ops;						// 指向平台特定 DMA 回调函数的指针
+	struct dma_pdata *data;							// dma 数据
+	struct block_settings *blk_settings;					// 块设备结构体
 };
 
 #endif /* LINUX_MMC_DW_MMC_H */

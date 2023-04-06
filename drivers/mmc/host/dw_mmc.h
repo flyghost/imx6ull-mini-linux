@@ -115,8 +115,8 @@
 #define SDMMC_INT_RTO			BIT(8)
 #define SDMMC_INT_DCRC			BIT(7)
 #define SDMMC_INT_RCRC			BIT(6)
-#define SDMMC_INT_RXDR			BIT(5)
-#define SDMMC_INT_TXDR			BIT(4)
+#define SDMMC_INT_RXDR			BIT(5)		// 读FIFO请求
+#define SDMMC_INT_TXDR			BIT(4)		// 写FIFO请求
 #define SDMMC_INT_DATA_OVER		BIT(3)
 #define SDMMC_INT_CMD_DONE		BIT(2)
 #define SDMMC_INT_RESP_ERR		BIT(1)
