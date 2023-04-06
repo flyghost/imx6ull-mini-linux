@@ -231,6 +231,15 @@ err:
 
 static void mci_send_cmd(struct dw_mci_slot *slot, u32 cmd, u32 arg);
 
+/**
+ * @brief 准备命令
+ * 
+ * 由于DWMMC没有遵循sdhci标准, 所以需要手动将从core传过来的CMD字段重新组合
+ * 
+ * @param mmc  MMC HOST
+ * @param cmd  CMD
+ * @return u32 经过转换后的CMD命令字
+ */
 static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 {
 	struct mmc_data	*data;
@@ -242,24 +251,28 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 
 	cmdr = cmd->opcode;
 
+	// 如果要发送 CMD12/CMD0/CMD15/CMD52, 需要额外发送 CMD STOP 命令
 	if (cmd->opcode == MMC_STOP_TRANSMISSION ||
 	    cmd->opcode == MMC_GO_IDLE_STATE ||
 	    cmd->opcode == MMC_GO_INACTIVE_STATE ||
 	    (cmd->opcode == SD_IO_RW_DIRECT &&
 	     ((cmd->arg >> 9) & 0x1FFFF) == SDIO_CCCR_ABORT))
 		cmdr |= SDMMC_CMD_STOP;
+	// 如果不是 CMD13 获取状态命令, 并且该命令包含data段, 则需要等待数据
 	else if (cmd->opcode != MMC_SEND_STATUS && cmd->data)
 		cmdr |= SDMMC_CMD_PRV_DAT_WAIT;
 
+	// 如果要发送 CMD11 来切换电压
 	if (cmd->opcode == SD_SWITCH_VOLTAGE) {
 		u32 clk_en_a;
 
 		/* Special bit makes CMD11 not die */
+		// 标记 BIT28 为CMD11
 		cmdr |= SDMMC_CMD_VOLT_SWITCH;
 
 		/* Change state to continue to handle CMD11 weirdness */
 		WARN_ON(slot->host->state != STATE_SENDING_CMD);
-		slot->host->state = STATE_SENDING_CMD11;
+		slot->host->state = STATE_SENDING_CMD11;	// 标记主机状态为正在发送 CMD11
 
 		/*
 		 * We need to disable low power mode (automatic clock stop)
@@ -272,74 +285,108 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 		 * ever called with a non-zero clock.  That shouldn't happen
 		 * until the voltage change is all done.
 		 */
+		// 在电压切换期间, 禁用低功耗模式(自动时钟停止)
+		// 由于低功耗模式会在 dw_mci_setup_bus() 接口中被打开, 所以必须手动关闭
 		clk_en_a = mci_readl(host, CLKENA);
 		clk_en_a &= ~(SDMMC_CLKEN_LOW_PWR << slot->id);
 		mci_writel(host, CLKENA, clk_en_a);
+
+		// 更新时钟域
 		mci_send_cmd(slot, SDMMC_CMD_UPD_CLK |
 			     SDMMC_CMD_PRV_DAT_WAIT, 0);
 	}
 
+	// 需要卡响应
 	if (cmd->flags & MMC_RSP_PRESENT) {
 		/* We expect a response, so set this bit */
-		cmdr |= SDMMC_CMD_RESP_EXP;
-		if (cmd->flags & MMC_RSP_136)
+		cmdr |= SDMMC_CMD_RESP_EXP;			// 标记 BIT6 说明需要卡响应
+		if (cmd->flags & MMC_RSP_136)			// 如果需要136长度的响应, 则需要标记 BIT7
 			cmdr |= SDMMC_CMD_RESP_LONG;
 	}
 
+	// 需要CRC响应
 	if (cmd->flags & MMC_RSP_CRC)
 		cmdr |= SDMMC_CMD_RESP_CRC;
 
+	// 是否需要传输数据
 	data = cmd->data;
 	if (data) {
-		cmdr |= SDMMC_CMD_DAT_EXP;
-		if (data->flags & MMC_DATA_STREAM)
+		cmdr |= SDMMC_CMD_DAT_EXP;			// 标记 BIT9 说明需要发送数据
+		if (data->flags & MMC_DATA_STREAM)		// 判断是块数据传输命令, 还是流数据传输模式
 			cmdr |= SDMMC_CMD_STRM_MODE;
-		if (data->flags & MMC_DATA_WRITE)
+		if (data->flags & MMC_DATA_WRITE)		// 判断传输方向: 0-读   1-写
 			cmdr |= SDMMC_CMD_DAT_WR;
 	}
 
+	// 是否有额外的对CMD命令字进行处理
 	if (drv_data && drv_data->prepare_command)
 		drv_data->prepare_command(slot->host, &cmdr);
 
 	return cmdr;
 }
 
+/**
+ * @brief 作用是为给定MMC命令准备一个停止或者中止命令(只用于存在数据传输的命令, 才需要发送停止命令)
+ * 
+ * 会检查给定命令的操作码, 并根据操作码设置相应的停止或者中止命令
+ * 
+ * 会初始化 stop cmd 的标准参数, 符合core的各字段
+ * 
+ * @param host 
+ * @param cmd 
+ * @return u32 返回停止或者中止的命令寄存器的值
+ */
 static u32 dw_mci_prep_stop_abort(struct dw_mci *host, struct mmc_command *cmd)
 {
 	struct mmc_command *stop;
 	u32 cmdr;
 
+	// 如果没有数据传输, 则直接返回
 	if (!cmd->data)
 		return 0;
 
+	// 获取用于存放停止命令的内存
 	stop = &host->stop_abort;
 	cmdr = cmd->opcode;
 	memset(stop, 0, sizeof(struct mmc_command));
 
+	// 读单个块/多个块/
+	// 写单个块/多个块
+	// 发送调整主机端采样时间点的命令
+	// 这些需要发送 CMD12
 	if (cmdr == MMC_READ_SINGLE_BLOCK ||
 	    cmdr == MMC_READ_MULTIPLE_BLOCK ||
 	    cmdr == MMC_WRITE_BLOCK ||
 	    cmdr == MMC_WRITE_MULTIPLE_BLOCK ||
 	    cmdr == MMC_SEND_TUNING_BLOCK ||
 	    cmdr == MMC_SEND_TUNING_BLOCK_HS200) {
-		stop->opcode = MMC_STOP_TRANSMISSION;
-		stop->arg = 0;
-		stop->flags = MMC_RSP_R1B | MMC_CMD_AC;
+		stop->opcode = MMC_STOP_TRANSMISSION;		// 需要发送 CMD12 停止传输
+		stop->arg = 0;					// 参数 arg 为0
+		stop->flags = MMC_RSP_R1B | MMC_CMD_AC;		// 需要R1B类型的响应, 命令类型为AC
+
+	// 如果 CMD命令是读写SDIO设备,则发送CMD52命令
 	} else if (cmdr == SD_IO_RW_EXTENDED) {
-		stop->opcode = SD_IO_RW_DIRECT;
-		stop->arg |= (1 << 31) | (0 << 28) | (SDIO_CCCR_ABORT << 9) |
+		stop->opcode = SD_IO_RW_DIRECT;			// 需要发送 CMD52
+		stop->arg |= (1 << 31) | (0 << 28) | (SDIO_CCCR_ABORT << 9) |	// ARG参数为 START 传输. CCCR中止
 			     ((cmd->arg >> 28) & 0x7);
 		stop->flags = MMC_RSP_SPI_R5 | MMC_RSP_R5 | MMC_CMD_AC;
 	} else {
 		return 0;
 	}
 
+	// 需要停止当前的传输/需要检查响应的CRC/需要卡响应
 	cmdr = stop->opcode | SDMMC_CMD_STOP |
 		SDMMC_CMD_RESP_CRC | SDMMC_CMD_RESP_EXP;
 
 	return cmdr;
 }
 
+/**
+ * @brief 在发送新的数据传输命令之前检查卡是否处于忙碌状态
+ * 
+ * @param host 
+ * @param cmd_flags 
+ */
 static void dw_mci_wait_while_busy(struct dw_mci *host, u32 cmd_flags)
 {
 	unsigned long timeout = jiffies + msecs_to_jiffies(500);
@@ -932,6 +979,13 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 	}
 }
 
+/**
+ * @brief 发送命令
+ * 
+ * @param slot 
+ * @param cmd 		CMD寄存器的值
+ * @param arg 		ARG参数
+ */
 static void mci_send_cmd(struct dw_mci_slot *slot, u32 cmd, u32 arg)
 {
 	struct dw_mci *host = slot->host;

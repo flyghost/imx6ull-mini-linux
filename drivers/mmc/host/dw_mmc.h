@@ -123,22 +123,22 @@
 #define SDMMC_INT_CD			BIT(0)
 #define SDMMC_INT_ERROR			0xbfc2
 /* Command register defines */
-#define SDMMC_CMD_START			BIT(31)
-#define SDMMC_CMD_USE_HOLD_REG	BIT(29)
-#define SDMMC_CMD_VOLT_SWITCH		BIT(28)
+#define SDMMC_CMD_START			BIT(31)		// 开始命令,一旦命令被CIU取走,该位清零
+#define SDMMC_CMD_USE_HOLD_REG	BIT(29)			// 发送给CARD的命令和数据是否经过HOLD寄存器
+#define SDMMC_CMD_VOLT_SWITCH		BIT(28)		// 开启电压切换(必须也只能通过CMD11设置)
 #define SDMMC_CMD_CCS_EXP		BIT(23)
 #define SDMMC_CMD_CEATA_RD		BIT(22)
-#define SDMMC_CMD_UPD_CLK		BIT(21)
-#define SDMMC_CMD_INIT			BIT(15)
-#define SDMMC_CMD_STOP			BIT(14)
-#define SDMMC_CMD_PRV_DAT_WAIT		BIT(13)
-#define SDMMC_CMD_SEND_STOP		BIT(12)
-#define SDMMC_CMD_STRM_MODE		BIT(11)
-#define SDMMC_CMD_DAT_WR		BIT(10)
-#define SDMMC_CMD_DAT_EXP		BIT(9)
-#define SDMMC_CMD_RESP_CRC		BIT(8)
-#define SDMMC_CMD_RESP_LONG		BIT(7)
-#define SDMMC_CMD_RESP_EXP		BIT(6)
+#define SDMMC_CMD_UPD_CLK		BIT(21)		// 0: 正常命令序列     1: 不发送命令, 只给卡的时钟域更新时钟寄存器的值(包括CLKDIIV, CLRSRC, CLKENA)
+#define SDMMC_CMD_INIT			BIT(15)		// 在发送命令前是否发送初始化序列,这样才可以在发送命令前初始化时钟(上电后,在给卡发送任意的命令前,必须发送80个时钟来初始化.所以在发送第一条命令时必须设置该bit位)
+#define SDMMC_CMD_STOP			BIT(14)		// 停止当前的传输
+#define SDMMC_CMD_PRV_DAT_WAIT		BIT(13)		// 是否等待之前的数据发送结束再发送当前数据    1: 等待  0: 不等待
+#define SDMMC_CMD_SEND_STOP		BIT(12)		// 传输结束后是否发送结束信号     1: 发送   0: 不发送
+#define SDMMC_CMD_STRM_MODE		BIT(11)		// 传输模式:   1: 块数据传输命令     0: 流数据传输命令
+#define SDMMC_CMD_DAT_WR		BIT(10)		// 传输方向:   1: 写入卡     0: 从卡读
+#define SDMMC_CMD_DAT_EXP		BIT(9)		// 1: 有数据需要传输       0: 没有数据需要传输
+#define SDMMC_CMD_RESP_CRC		BIT(8)		// 1: 需要检查响应的CRC    0: 不需要检查响应的CRC(有一些响应不返回有效的CRC位,软件需要关闭这些命令的CRC检查)
+#define SDMMC_CMD_RESP_LONG		BIT(7)		// 1: 期望从卡收到长响应   0: 期望从卡收到短响应
+#define SDMMC_CMD_RESP_EXP		BIT(6)		// 需要卡响应
 #define SDMMC_CMD_INDX(n)		((n) & 0x1F)
 /* Status register defines */
 #define SDMMC_GET_FCNT(x)		(((x)>>17) & 0x1FFF)
