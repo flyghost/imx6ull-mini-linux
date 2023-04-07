@@ -87,9 +87,9 @@
 #define SDMMC_CTRL_READ_WAIT		BIT(6)
 #define SDMMC_CTRL_DMA_ENABLE		BIT(5)
 #define SDMMC_CTRL_INT_ENABLE		BIT(4)
-#define SDMMC_CTRL_DMA_RESET		BIT(2)
-#define SDMMC_CTRL_FIFO_RESET		BIT(1)
-#define SDMMC_CTRL_RESET		BIT(0)
+#define SDMMC_CTRL_DMA_RESET		BIT(2)			// 复位 DMA
+#define SDMMC_CTRL_FIFO_RESET		BIT(1)			// 复位 FIFO
+#define SDMMC_CTRL_RESET		BIT(0)			// 复位控制器
 /* Clock Enable register defines */
 #define SDMMC_CLKEN_LOW_PWR		BIT(16)
 #define SDMMC_CLKEN_ENABLE		BIT(0)
@@ -104,23 +104,23 @@
 #define SDMMC_CTYPE_1BIT		0
 /* Interrupt status & mask register defines */
 #define SDMMC_INT_SDIO(n)		BIT(16 + (n))
-#define SDMMC_INT_EBE			BIT(15)
-#define SDMMC_INT_ACD			BIT(14)
-#define SDMMC_INT_SBE			BIT(13)
-#define SDMMC_INT_HLE			BIT(12)
-#define SDMMC_INT_FRUN			BIT(11)
-#define SDMMC_INT_HTO			BIT(10)
+#define SDMMC_INT_EBE			BIT(15)		// 结束bit错误
+#define SDMMC_INT_ACD			BIT(14)		// 表明自动命令结束
+#define SDMMC_INT_SBE			BIT(13)		// 开始bit错误
+#define SDMMC_INT_HLE			BIT(12)		// 硬件被锁导致错误
+#define SDMMC_INT_FRUN			BIT(11)		// FIFO underrun/overrun错误
+#define SDMMC_INT_HTO			BIT(10)		// 主机超时导致数据饿死(data starvation by host timeout)
 #define SDMMC_INT_VOLT_SWITCH		BIT(10) /* overloads bit 10! */
-#define SDMMC_INT_DRTO			BIT(9)
-#define SDMMC_INT_RTO			BIT(8)
-#define SDMMC_INT_DCRC			BIT(7)
-#define SDMMC_INT_RCRC			BIT(6)
+#define SDMMC_INT_DRTO			BIT(9)		// 读数据超时
+#define SDMMC_INT_RTO			BIT(8)		// 响应超时
+#define SDMMC_INT_DCRC			BIT(7)		// 数据CRC校验错误
+#define SDMMC_INT_RCRC			BIT(6)		// 响应CRC校验错误
 #define SDMMC_INT_RXDR			BIT(5)		// 读FIFO请求
 #define SDMMC_INT_TXDR			BIT(4)		// 写FIFO请求
-#define SDMMC_INT_DATA_OVER		BIT(3)
-#define SDMMC_INT_CMD_DONE		BIT(2)
-#define SDMMC_INT_RESP_ERR		BIT(1)
-#define SDMMC_INT_CD			BIT(0)
+#define SDMMC_INT_DATA_OVER		BIT(3)		// 数据传输完成
+#define SDMMC_INT_CMD_DONE		BIT(2)		// 命令传输完成
+#define SDMMC_INT_RESP_ERR		BIT(1)		// 命令响应错误中断
+#define SDMMC_INT_CD			BIT(0)		// 卡检测
 #define SDMMC_INT_ERROR			0xbfc2
 /* Command register defines */
 #define SDMMC_CMD_START			BIT(31)		// 开始命令,一旦命令被CIU取走,该位清零

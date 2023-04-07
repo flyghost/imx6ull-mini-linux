@@ -42,9 +42,11 @@
 #include "dw_mmc.h"
 
 /* Common flag combinations */
+// 数据错误: 读数据超时, 数据CRC校验错误, 主机超时错误, 开始bit错误, 结束bit错误
 #define DW_MCI_DATA_ERROR_FLAGS	(SDMMC_INT_DRTO | SDMMC_INT_DCRC | \
 				 SDMMC_INT_HTO | SDMMC_INT_SBE  | \
 				 SDMMC_INT_EBE)
+//响应错误: 响应超时, 响应CRC校验错误, 响应命令错误
 #define DW_MCI_CMD_ERROR_FLAGS	(SDMMC_INT_RTO | SDMMC_INT_RCRC | \
 				 SDMMC_INT_RESP_ERR)
 #define DW_MCI_ERROR_FLAGS	(DW_MCI_DATA_ERROR_FLAGS | \
@@ -1713,9 +1715,16 @@ static void dw_mci_request_end(struct dw_mci *host, struct mmc_request *mrq)
 	spin_lock(&host->lock);
 }
 
+/**
+ * @brief CMD发送结束, 读取响应
+ * 
+ * @param host 
+ * @param cmd 
+ * @return int 
+ */
 static int dw_mci_command_complete(struct dw_mci *host, struct mmc_command *cmd)
 {
-	u32 status = host->cmd_status;
+	u32 status = host->cmd_status;		// STATUS寄存器的值
 
 	host->cmd_status = 0;
 
@@ -1795,6 +1804,17 @@ static int dw_mci_data_complete(struct dw_mci *host, struct mmc_data *data)
 	return data->error;
 }
 
+/**
+ * @brief tasklet任务
+ * 
+ * 有以下情况会启动tasklet
+ * 1. CMD中断(新版本控制器没有)
+ * 2. 有数据错误
+ * 3. 数据传输完成
+ * 4. DMA结束
+ * 
+ * @param priv 
+ */
 static void dw_mci_tasklet_func(unsigned long priv)
 {
 	struct dw_mci *host = (struct dw_mci *)priv;
@@ -2262,6 +2282,13 @@ static void dw_mci_pull_data64(struct dw_mci *host, void *buf, int cnt)
 	}
 }
 
+/**
+ * @brief 从FIFO中读取数据
+ * 
+ * @param host 
+ * @param buf 		读取数据保存的地址
+ * @param cnt 		读取的长度(单位: 字节)
+ */
 static void dw_mci_pull_data(struct dw_mci *host, void *buf, int cnt)
 {
 	int len;
@@ -2277,6 +2304,12 @@ static void dw_mci_pull_data(struct dw_mci *host, void *buf, int cnt)
 	host->pull_data(host, buf, cnt);
 }
 
+/**
+ * @brief 以PIO(Programmed Input/Output)的方式读数据
+ * 
+ * @param host 
+ * @param dto 是否已经接收到数据传输结束中断(DTO中断)
+ */
 static void dw_mci_read_data_pio(struct dw_mci *host, bool dto)
 {
 	struct sg_mapping_iter *sg_miter = &host->sg_miter;
@@ -2298,12 +2331,12 @@ static void dw_mci_read_data_pio(struct dw_mci *host, bool dto)
 		offset = 0;
 
 		do {
-			fcnt = (SDMMC_GET_FCNT(mci_readl(host, STATUS))
-					<< shift) + host->part_buf_count;
+			fcnt = (SDMMC_GET_FCNT(mci_readl(host, STATUS))		// FIFO COUNT, 以fifo宽度为单位的count
+					<< shift) + host->part_buf_count;	// << shift后, 说明是有多少个字节
 			len = min(remain, fcnt);
 			if (!len)
 				break;
-			dw_mci_pull_data(host, (void *)(buf + offset), len);
+			dw_mci_pull_data(host, (void *)(buf + offset), len);	// 从fifo中读取数据
 			data->bytes_xfered += len;
 			offset += len;
 			remain -= len;
@@ -2313,8 +2346,8 @@ static void dw_mci_read_data_pio(struct dw_mci *host, bool dto)
 		status = mci_readl(host, MINTSTS);
 		mci_writel(host, RINTSTS, SDMMC_INT_RXDR);
 	/* if the RXDR is ready read again */
-	} while ((status & SDMMC_INT_RXDR) ||
-		 (dto && SDMMC_GET_FCNT(mci_readl(host, STATUS))));
+	} while ((status & SDMMC_INT_RXDR) ||				// 如果仍然有FIFO读请求, 继续读
+		 (dto && SDMMC_GET_FCNT(mci_readl(host, STATUS))));	// 如果接收到DTO中断, 并且FIFO中有数据, 继续读
 
 	if (!remain) {
 		if (!sg_miter_next(sg_miter))
@@ -2331,6 +2364,11 @@ done:
 	set_bit(EVENT_XFER_COMPLETE, &host->pending_events);
 }
 
+/**
+ * @brief 以PIO(Programmed Input/Output)的方式写数据
+ * 
+ * @param host 
+ */
 static void dw_mci_write_data_pio(struct dw_mci *host)
 {
 	struct sg_mapping_iter *sg_miter = &host->sg_miter;
@@ -2353,6 +2391,7 @@ static void dw_mci_write_data_pio(struct dw_mci *host)
 		offset = 0;
 
 		do {
+			// 获取FIFO中剩余的空位
 			fcnt = ((fifo_depth -
 				 SDMMC_GET_FCNT(mci_readl(host, STATUS)))
 					<< shift) - host->part_buf_count;
@@ -2368,7 +2407,7 @@ static void dw_mci_write_data_pio(struct dw_mci *host)
 		sg_miter->consumed = offset;
 		status = mci_readl(host, MINTSTS);
 		mci_writel(host, RINTSTS, SDMMC_INT_TXDR);
-	} while (status & SDMMC_INT_TXDR); /* if TXDR write again */
+	} while (status & SDMMC_INT_TXDR); /* if TXDR write again */		// 如果仍存在FIFO写请求, 继续写
 
 	if (!remain) {
 		if (!sg_miter_next(sg_miter))
@@ -2385,6 +2424,12 @@ done:
 	set_bit(EVENT_XFER_COMPLETE, &host->pending_events);
 }
 
+/**
+ * @brief 命令传输完成, 设置pending events命令完成标志, 启动tasklet
+ * 
+ * @param host 
+ * @param status 
+ */
 static void dw_mci_cmd_interrupt(struct dw_mci *host, u32 status)
 {
 	if (!host->cmd_status)
@@ -2434,7 +2479,7 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 	if (pending) {
 		/* Check volt switch first, since it can look like an error */
 		if ((host->state == STATE_SENDING_CMD11) &&
-		    (pending & SDMMC_INT_VOLT_SWITCH)) {
+		    (pending & SDMMC_INT_VOLT_SWITCH)) {		// 新版本控制器没有这个, 可忽略
 			unsigned long irqflags;
 
 			mci_writel(host, RINTSTS, SDMMC_INT_VOLT_SWITCH);
@@ -2451,13 +2496,15 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			del_timer(&host->cmd11_timer);
 		}
 
+		// 有响应错误: 响应超时, 响应CRC校验错误, 响应命令错误
 		if (pending & DW_MCI_CMD_ERROR_FLAGS) {
 			mci_writel(host, RINTSTS, DW_MCI_CMD_ERROR_FLAGS);
 			host->cmd_status = pending;
-			smp_wmb();
+			smp_wmb();// 内存屏障, 强制CPU在执行该宏之前所有的写操作都完成
 			set_bit(EVENT_CMD_COMPLETE, &host->pending_events);
 		}
 
+		// 有数据错误: 读数据超时, 数据CRC校验错误, 主机超时错误, 开始bit错误, 结束bit错误
 		if (pending & DW_MCI_DATA_ERROR_FLAGS) {
 			/* if there is an error report DATA_ERROR */
 			mci_writel(host, RINTSTS, DW_MCI_DATA_ERROR_FLAGS);
@@ -2467,6 +2514,7 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			tasklet_schedule(&host->tasklet);
 		}
 
+		// 数据传输完成
 		if (pending & SDMMC_INT_DATA_OVER) {
 			mci_writel(host, RINTSTS, SDMMC_INT_DATA_OVER);
 			if (!host->data_status)
@@ -2480,29 +2528,34 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			tasklet_schedule(&host->tasklet);
 		}
 
+		// 读FIFO请求
 		if (pending & SDMMC_INT_RXDR) {
 			mci_writel(host, RINTSTS, SDMMC_INT_RXDR);
 			if (host->dir_status == DW_MCI_RECV_STATUS && host->sg)
 				dw_mci_read_data_pio(host, false);
 		}
 
+		// 写FIFO请求
 		if (pending & SDMMC_INT_TXDR) {
 			mci_writel(host, RINTSTS, SDMMC_INT_TXDR);
 			if (host->dir_status == DW_MCI_SEND_STATUS && host->sg)
 				dw_mci_write_data_pio(host);
 		}
 
+		// 命令传输完成
 		if (pending & SDMMC_INT_CMD_DONE) {
 			mci_writel(host, RINTSTS, SDMMC_INT_CMD_DONE);
 			dw_mci_cmd_interrupt(host, pending);
 		}
 
+		// 卡检测
 		if (pending & SDMMC_INT_CD) {
 			mci_writel(host, RINTSTS, SDMMC_INT_CD);
 			dw_mci_handle_cd(host);
 		}
 
 		/* Handle SDIO Interrupts */
+		// SDIO中断
 		for (i = 0; i < host->num_slots; i++) {
 			struct dw_mci_slot *slot = host->slot[i];
 
@@ -2596,6 +2649,20 @@ static int dw_mci_of_get_slot_quirks(struct device *dev, u8 slot)
 }
 #endif /* CONFIG_OF */
 
+/**
+ * @brief 初始化对应的卡槽
+ * 
+ * 分配内存: mmchost + dwmcihost
+ * 一个mmc host 对应一个 dw_mci_slot
+ * 
+ * slot里面保存着 mmchost 指针和 dwhost指针
+ * 
+ * dw mci host 保存着 slot 指针
+ * 
+ * @param host 
+ * @param id 
+ * @return int 
+ */
 static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 {
 	struct mmc_host *mmc;
@@ -2604,10 +2671,12 @@ static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	int ctrl_id, ret;
 	u32 freq[2];
 
+	// 分配mmc host内存和额外的私有数据内存, 额外的私有数据内存存放slot
 	mmc = mmc_alloc_host(sizeof(struct dw_mci_slot), host->dev);
 	if (!mmc)
 		return -ENOMEM;
 
+	// 初始化私有slot结构体
 	slot = mmc_priv(mmc);
 	slot->id = id;
 	slot->sdio_id = host->sdio_id0 + id;
@@ -2617,6 +2686,7 @@ static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 
 	slot->quirks = dw_mci_of_get_slot_quirks(host->dev, slot->id);
 
+	// 初始化 mmc host 操作函数
 	mmc->ops = &dw_mci_ops;
 	if (of_property_read_u32_array(host->dev->of_node,
 				       "clock-freq-min-max", freq, 2)) {
@@ -2633,7 +2703,7 @@ static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 		goto err_host_allocated;
 
 	if (!mmc->ocr_avail)
-		mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
+		mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;	// 支持3.3V
 
 	if (host->pdata->caps)
 		mmc->caps = host->pdata->caps;
@@ -2709,6 +2779,15 @@ static void dw_mci_cleanup_slot(struct dw_mci_slot *slot, unsigned int id)
 	mmc_free_host(slot->mmc);
 }
 
+/**
+ * @brief 初始化 DMA
+ * 
+ * 1. 判断IDMAC地址模式
+ * 2. 分配空间
+ * 3. 初始化DMA
+ * 
+ * @param host 
+ */
 static void dw_mci_init_dma(struct dw_mci *host)
 {
 	int addr_config;
@@ -2860,7 +2939,7 @@ ciu_out:
 }
 
 /**
- * @brief CMD11 执行的超时中断
+ * @brief CMD11 执行的超时中断, 启动tasklet
  * 
  * @param arg 
  */
@@ -2873,7 +2952,7 @@ static void dw_mci_cmd11_timer(unsigned long arg)
 		return;
 	}
 
-	host->cmd_status = SDMMC_INT_RTO;
+	host->cmd_status = SDMMC_INT_RTO;		// 响应超时
 	set_bit(EVENT_CMD_COMPLETE, &host->pending_events);
 	tasklet_schedule(&host->tasklet);
 }
@@ -2946,6 +3025,11 @@ static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
 }
 #endif /* CONFIG_OF */
 
+/**
+ * @brief 使能SD卡的插拔检测
+ * 
+ * @param host 
+ */
 static void dw_mci_enable_cd(struct dw_mci *host)
 {
 	struct dw_mci_board *brd = host->pdata;
@@ -3095,23 +3179,24 @@ int dw_mci_probe(struct dw_mci *host)
 	}
 
 	/* Reset all blocks */
-	if (!dw_mci_ctrl_reset(host, SDMMC_CTRL_ALL_RESET_FLAGS))
+	if (!dw_mci_ctrl_reset(host, SDMMC_CTRL_ALL_RESET_FLAGS))		// 复位 DMA, FIFO, 和控制器
 		return -ENODEV;
 
-	host->dma_ops = host->pdata->dma_ops;
-	dw_mci_init_dma(host);
+	host->dma_ops = host->pdata->dma_ops;					// 赋值 DMA 操作接口
+	dw_mci_init_dma(host);							// 初始化DMA
 
 	/* Clear the interrupts for the host controller */
-	mci_writel(host, RINTSTS, 0xFFFFFFFF);
-	mci_writel(host, INTMASK, 0); /* disable all mmc interrupt first */
+	mci_writel(host, RINTSTS, 0xFFFFFFFF);					// 清除原始中断标志
+	mci_writel(host, INTMASK, 0); /* disable all mmc interrupt first */	// 禁用所有的MMC中断
 
 	/* Put in max timeout */
-	mci_writel(host, TMOUT, 0xFFFFFFFF);
+	mci_writel(host, TMOUT, 0xFFFFFFFF);					// 设置超时时间最大
 
 	/*
 	 * FIFO threshold settings  RxMark  = fifo_size / 2 - 1,
 	 *                          Tx Mark = fifo_size / 2 DMA Size = 8
 	 */
+	// 如果没有指定FIFO深度, 则从寄存器读取
 	if (!host->pdata->fifo_depth) {
 		/*
 		 * Power-on value of RX_WMark is FIFO_DEPTH-1, but this may
@@ -3119,8 +3204,9 @@ int dw_mci_probe(struct dw_mci *host)
 		 * about to do, so if you know the value for your hardware, you
 		 * should put it in the platform data.
 		 */
+		// RX_WMark的Power-on值是 FIFO_DEPTH-1，但这可能已经被引导加载程序覆盖了，就像我们将要做的那样，所以如果您知道硬件的值，应该将其放在平台数据中。
 		fifo_size = mci_readl(host, FIFOTH);
-		fifo_size = 1 + ((fifo_size >> 16) & 0xfff);
+		fifo_size = 1 + ((fifo_size >> 16) & 0xfff);	// 读取RX FIFO阈值
 	} else {
 		fifo_size = host->pdata->fifo_depth;
 	}
@@ -3151,19 +3237,20 @@ int dw_mci_probe(struct dw_mci *host)
 	if (ret)
 		goto err_dmaunmap;
 
+	// 判断控制器下挂载了多少个卡槽
 	if (host->pdata->num_slots)
-		host->num_slots = host->pdata->num_slots;
+		host->num_slots = host->pdata->num_slots;			// 有指定数量, 直接赋值
 	else
-		host->num_slots = ((mci_readl(host, HCON) >> 1) & 0x1F) + 1;
+		host->num_slots = ((mci_readl(host, HCON) >> 1) & 0x1F) + 1;	// 没有指定数量, 从寄存器读(可能已经被bootloader赋值过了)
 
 	/*
 	 * Enable interrupts for command done, data over, data empty,
 	 * receive ready and error such as transmit, receive timeout, crc error
 	 */
-	mci_writel(host, RINTSTS, 0xFFFFFFFF);
-	mci_writel(host, INTMASK, SDMMC_INT_CMD_DONE | SDMMC_INT_DATA_OVER |
-		   SDMMC_INT_TXDR | SDMMC_INT_RXDR |
-		   DW_MCI_ERROR_FLAGS);
+	mci_writel(host, RINTSTS, 0xFFFFFFFF);					// 清除中断标志
+	mci_writel(host, INTMASK, SDMMC_INT_CMD_DONE | SDMMC_INT_DATA_OVER |	// 开启中断: cmd 完成, 数据传输完成中断
+		   SDMMC_INT_TXDR | SDMMC_INT_RXDR |				// 写FIFO请求, 读FIFO请求
+		   DW_MCI_ERROR_FLAGS);						// 错误
 	mci_writel(host, CTRL, SDMMC_CTRL_INT_ENABLE); /* Enable mci interrupt */
 
 	dev_info(host->dev, "DW MMC controller at irq %d, "

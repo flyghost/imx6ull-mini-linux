@@ -66,6 +66,8 @@ struct dma_map_ops {
 	int is_phys;
 };
 
+// 生成一个N位的掩码, 譬如: n = 8, 生成的掩码位 1111 1111
+// 如果n=64, 则全是1
 #define DMA_BIT_MASK(n)	(((n) == 64) ? ~0ULL : ((1ULL<<(n))-1))
 
 #define DMA_MASK_NONE	0x0ULL
