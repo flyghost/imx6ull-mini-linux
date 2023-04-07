@@ -129,39 +129,39 @@ struct mmc_data;
  * using barriers.
  */
 struct dw_mci {
-	spinlock_t		lock;
-	spinlock_t		irq_lock;
-	void __iomem		*regs;
-	void __iomem		*fifo_reg;
+	spinlock_t		lock;			// 保护队列和相关数据的自旋锁
+	spinlock_t		irq_lock;		// 保护 INTMASK 设置的自旋锁
+	void __iomem		*regs;			// 指向 MMIO 寄存器的指针
+	void __iomem		*fifo_reg;		// 指向数据 FIFO 的 MMIO 寄存器的指针
 
-	struct scatterlist	*sg;
-	struct sg_mapping_iter	sg_miter;
+	struct scatterlist	*sg;			// 当前由 PIO 代码处理的散列表项（如果有）
+	struct sg_mapping_iter	sg_miter;		// PIO 映射散列表迭代器
 
 	struct dw_mci_slot	*cur_slot;
-	struct mmc_request	*mrq;
-	struct mmc_command	*cmd;
-	struct mmc_data		*data;
-	struct mmc_command	stop_abort;
-	unsigned int		prev_blksz;
-	unsigned char		timing;
+	struct mmc_request	*mrq;			// 当前正在 slot 上处理的请求，如果控制器处于空闲状态，则为 NULL
+	struct mmc_command	*cmd;			// 当前正在发送给卡片的命令，或者为 NULL
+	struct mmc_data		*data;			// 当前正在传输的数据，如果没有数据传输正在进行，则为 NULL
+	struct mmc_command	stop_abort;		// 当前准备用于停止传输的命令
+	unsigned int		prev_blksz;		// 前一个传输块大小记录
+	unsigned char		timing;			// 当前 ios 时序记录
 
 	/* DMA interface members*/
-	int			use_dma;
-	int			using_dma;
-	int			dma_64bit_address;
+	int			use_dma;		// 当前传输使用的 DMA 通道，零表示 PIO 模式
+	int			using_dma;		// 当前传输是否使用 DMA
+	int			dma_64bit_address;	// DMA 是否支持 64 位地址模式
 
-	dma_addr_t		sg_dma;
-	void			*sg_cpu;
-	const struct dw_mci_dma_ops	*dma_ops;
+	dma_addr_t		sg_dma;			// DMA 缓冲区的总线地址
+	void			*sg_cpu;		// DMA 缓冲区的虚拟地址
+	const struct dw_mci_dma_ops	*dma_ops;	// 指向平台特定 DMA 回调函数的指针
 #ifdef CONFIG_MMC_DW_IDMAC
 	unsigned int		ring_size;
 #else
 	struct dw_mci_dma_data	*dma_data;
 #endif
-	u32			cmd_status;
-	u32			data_status;
-	u32			stop_cmdr;
-	u32			dir_status;
+	u32			cmd_status;		// 当前命令完成时 SR 的快照。仅在 EVENT_CMD_COMPLETE 挂起时有效
+	u32			data_status;		// 当前数据传输完成时 SR 的快照。仅在 EVENT_DATA_COMPLETE 或 EVENT_DATA_ERROR 挂起时有效
+	u32			stop_cmdr;		// 当停止命令要发送时要加载到 CMDR 中的值
+	u32			dir_status;		// 当前传输的方向
 	struct tasklet_struct	tasklet;		// cmd断结束后(包含cmd11超时中断), 执行的底半部处理程序(顶半步处理程序为中断处理程序)
 	unsigned long		pending_events;
 	unsigned long		completed_events;
