@@ -20,6 +20,8 @@
  *   Usually the next entry will be @sg@ + 1, but if this sg element is part
  *   of a chained scatterlist, it could jump to the start of a new
  *   scatterlist array.
+ * 
+ * 获取当前scatterlist指向的下一个scatterlist
  *
  **/
 struct scatterlist *sg_next(struct scatterlist *sg)
@@ -45,6 +47,8 @@ EXPORT_SYMBOL(sg_next);
  * Description:
  * Allows to know how many entries are in sg, taking into acount
  * chaining as well
+ * 
+ * 获取scatterlsit中entries的数量
  *
  **/
 int sg_nents(struct scatterlist *sg)
@@ -69,6 +73,8 @@ EXPORT_SYMBOL(sg_nents);
  *   Note that the @sgl@ pointer passed in need not be the first one,
  *   the important bit is that @nents@ denotes the number of entries that
  *   exist from @sgl@.
+ * 
+ * 获取scatterlist中最后一个entry
  *
  **/
 struct scatterlist *sg_last(struct scatterlist *sgl, unsigned int nents)
@@ -99,6 +105,8 @@ EXPORT_SYMBOL(sg_last);
  * Notes:
  *   If this is part of a chained sg table, sg_mark_end() should be
  *   used only on the last table part.
+ * 
+ * 初始化scatterlist
  *
  **/
 void sg_init_table(struct scatterlist *sgl, unsigned int nents)

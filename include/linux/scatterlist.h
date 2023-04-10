@@ -9,10 +9,11 @@
 #include <asm/scatterlist.h>
 #include <asm/io.h>
 
+// 为了使用者可以偷懒,kernel 抽象出来了一个简单的数据结构:struct sg_table,帮忙保存 scatterlist 的数组指针和长度
 struct sg_table {
-	struct scatterlist *sgl;	/* the list */
-	unsigned int nents;		/* number of mapped entries */
-	unsigned int orig_nents;	/* original size of list */
+	struct scatterlist *sgl;	/* the list */				// 内存块数组的首地址
+	unsigned int nents;		/* number of mapped entries */		// 有效的内存块个数(可能会小于orig_nents)
+	unsigned int orig_nents;	/* original size of list */		// 内存卡数组的size
 };
 
 /*
@@ -39,10 +40,10 @@ struct sg_table {
  * a valid sg entry, or whether it points to the start of a new scatterlist.
  * Those low bits are there for everyone! (thanks mason :-)
  */
-#define sg_is_chain(sg)		((sg)->page_link & 0x01)
-#define sg_is_last(sg)		((sg)->page_link & 0x02)
+#define sg_is_chain(sg)		((sg)->page_link & 0x01)		// 判断该scatterlsit是否是chain
+#define sg_is_last(sg)		((sg)->page_link & 0x02)		// 是否是最后一个内存块
 #define sg_chain_ptr(sg)	\
-	((struct scatterlist *) ((sg)->page_link & ~0x03))
+	((struct scatterlist *) ((sg)->page_link & ~0x03))		// 获取下一个catterlist地址
 
 /**
  * sg_assign_page - Assign a given page to an SG entry
@@ -52,22 +53,24 @@ struct sg_table {
  * Description:
  *   Assign page to sg entry. Also see sg_set_page(), the most commonly used
  *   variant.
+ * 
+ * 将给定的页面分配给 SG 条目
  *
  **/
 static inline void sg_assign_page(struct scatterlist *sg, struct page *page)
 {
-	unsigned long page_link = sg->page_link & 0x3;
+	unsigned long page_link = sg->page_link & 0x3;			// 保存低两位
 
 	/*
 	 * In order for the low bit stealing approach to work, pages
 	 * must be aligned at a 32-bit boundary as a minimum.
 	 */
-	BUG_ON((unsigned long) page & 0x03);
+	BUG_ON((unsigned long) page & 0x03);				// 判断页面是否是4字节对齐
 #ifdef CONFIG_DEBUG_SG
 	BUG_ON(sg->sg_magic != SG_MAGIC);
 	BUG_ON(sg_is_chain(sg));
 #endif
-	sg->page_link = page_link | (unsigned long) page;
+	sg->page_link = page_link | (unsigned long) page;		// 将页面赋值给 page link 参数
 }
 
 /**
@@ -82,6 +85,8 @@ static inline void sg_assign_page(struct scatterlist *sg, struct page *page)
  *   the page directly. We encode sg table information in the lower bits
  *   of the page pointer. See sg_page() for looking up the page belonging
  *   to an sg entry.
+ * 
+ * 设置 SG 条目以指向给定页面
  *
  **/
 static inline void sg_set_page(struct scatterlist *sg, struct page *page,
@@ -92,6 +97,12 @@ static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 	sg->length = len;
 }
 
+/**
+ * @brief 获取当前scatterlist指向的下一个scatterlist page地址
+ * 
+ * @param sg 
+ * @return struct page* 
+ */
 static inline struct page *sg_page(struct scatterlist *sg)
 {
 #ifdef CONFIG_DEBUG_SG
@@ -103,6 +114,9 @@ static inline struct page *sg_page(struct scatterlist *sg)
 
 /**
  * sg_set_buf - Set sg entry to point at given data
+ * 
+ * 将一段数据加入已知的scatterlsit中
+ * 
  * @sg:		 SG entry
  * @buf:	 Data
  * @buflen:	 Data length
@@ -119,6 +133,7 @@ static inline void sg_set_buf(struct scatterlist *sg, const void *buf,
 
 /*
  * Loop over each sg element, following the pointer to a new list if necessary
+   遍历每个sg元素，必要时跟随指向新链表的指针
  */
 #define for_each_sg(sglist, sg, nr, __i)	\
 	for (__i = 0, sg = (sglist); __i < (nr); __i++, sg = sg_next(sg))
@@ -131,6 +146,8 @@ static inline void sg_set_buf(struct scatterlist *sg, const void *buf,
  *
  * Description:
  *   Links @prv@ and @sgl@ together, to form a longer scatterlist.
+ * 
+ * 将两个scatterlist链接到一起
  *
  **/
 static inline void sg_chain(struct scatterlist *prv, unsigned int prv_nents,
@@ -150,7 +167,7 @@ static inline void sg_chain(struct scatterlist *prv, unsigned int prv_nents,
 	 * Set lowest bit to indicate a link pointer, and make sure to clear
 	 * the termination bit if it happens to be set.
 	 */
-	prv[prv_nents - 1].page_link = ((unsigned long) sgl | 0x01) & ~0x02;
+	prv[prv_nents - 1].page_link = ((unsigned long) sgl | 0x01) & ~0x02;		// 打标记: 该scatter是一个chain, 并取消掉最后一个scatter标记
 }
 
 /**
@@ -160,6 +177,8 @@ static inline void sg_chain(struct scatterlist *prv, unsigned int prv_nents,
  * Description:
  *   Marks the passed in sg entry as the termination point for the sg
  *   table. A call to sg_next() on this entry will return NULL.
+ * 
+ * 标记结束位置
  *
  **/
 static inline void sg_mark_end(struct scatterlist *sg)
@@ -170,8 +189,8 @@ static inline void sg_mark_end(struct scatterlist *sg)
 	/*
 	 * Set termination bit, clear potential chain bit
 	 */
-	sg->page_link |= 0x02;
-	sg->page_link &= ~0x01;
+	sg->page_link |= 0x02;		// 标记最后一个
+	sg->page_link &= ~0x01;		// 取消标记chain
 }
 
 /**
@@ -180,6 +199,8 @@ static inline void sg_mark_end(struct scatterlist *sg)
  *
  * Description:
  *   Removes the termination marker from the given entry of the scatterlist.
+ * 
+ * 取消标记结束位置
  *
  **/
 static inline void sg_unmark_end(struct scatterlist *sg)
@@ -198,6 +219,8 @@ static inline void sg_unmark_end(struct scatterlist *sg)
  *   This calls page_to_phys() on the page in this sg entry, and adds the
  *   sg offset. The caller must know that it is legal to call page_to_phys()
  *   on the sg page.
+ * 
+ * 获取物理地址
  *
  **/
 static inline dma_addr_t sg_phys(struct scatterlist *sg)
@@ -213,6 +236,8 @@ static inline dma_addr_t sg_phys(struct scatterlist *sg)
  *   This calls page_address() on the page in this sg entry, and adds the
  *   sg offset. The caller must know that the sg page has a valid virtual
  *   mapping.
+ * 
+ * 获取虚拟地址
  *
  **/
 static inline void *sg_virt(struct scatterlist *sg)
@@ -265,14 +290,22 @@ size_t sg_pcopy_to_buffer(struct scatterlist *sgl, unsigned int nents,
  * within the sg. The iteration will stop either when a maximum number of sg
  * entries was reached or a terminating sg (sg_last(sg) == true) was reached.
  */
+
+/**
+ * @brief 用于在scatterlist链表中按页进行迭代
+ * 
+ * 在 scatterlist 链表中，每个 scatterlist 结构体都可以包含多个内存页。
+ * 使用 sg_page_iter 结构体进行迭代时，每次迭代都会前进到下一个内存页，而不是下一个 scatterlist 结构体
+ * 
+ */
 struct sg_page_iter {
-	struct scatterlist	*sg;		/* sg holding the page */
-	unsigned int		sg_pgoffset;	/* page offset within the sg */
+	struct scatterlist	*sg;		/* sg holding the page */		// 指向当前迭代到的 scatterlist 结构体
+	unsigned int		sg_pgoffset;	/* page offset within the sg */		// 表示当前页在 scatterlist 结构体中的偏移量
 
 	/* these are internal states, keep away */
-	unsigned int		__nents;	/* remaining sg entries */
+	unsigned int		__nents;	/* remaining sg entries */		// 表示剩余的 scatterlist 结构体数量
 	int			__pg_advance;	/* nr pages to advance at the
-						 * next step */
+						 * next step */				// 表示下一步需要前进的页数
 };
 
 bool __sg_page_iter_next(struct sg_page_iter *piter);
@@ -282,6 +315,13 @@ void __sg_page_iter_start(struct sg_page_iter *piter,
 /**
  * sg_page_iter_page - get the current page held by the page iterator
  * @piter:	page iterator holding the page
+ */
+
+/**
+ * @brief 获取当前正在被page iterator处理的page
+ * 
+ * @param piter 
+ * @return struct page* 
  */
 static inline struct page *sg_page_iter_page(struct sg_page_iter *piter)
 {
@@ -293,6 +333,13 @@ static inline struct page *sg_page_iter_page(struct sg_page_iter *piter)
  * the page iterator.
  * @piter:	page iterator holding the page
  */
+
+/**
+ * @brief 获取当前正在被page iterator处理的dma地址
+ * 
+ * @param piter 
+ * @return dma_addr_t 
+ */
 static inline dma_addr_t sg_page_iter_dma_address(struct sg_page_iter *piter)
 {
 	return sg_dma_address(piter->sg) + (piter->sg_pgoffset << PAGE_SHIFT);
@@ -300,6 +347,9 @@ static inline dma_addr_t sg_page_iter_dma_address(struct sg_page_iter *piter)
 
 /**
  * for_each_sg_page - iterate over the pages of the given sg list
+ * 
+ * 用于在scatterlist链表中按页迭代
+ * 
  * @sglist:	sglist to iterate over
  * @piter:	page iterator to hold current page, sg, sg_pgoffset
  * @nents:	maximum number of sg entries to iterate over
